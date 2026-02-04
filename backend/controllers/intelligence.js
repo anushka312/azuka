@@ -10,7 +10,9 @@ export const syncDailyLog = async (req, res) => {
         const user = {
             name: "Demo User",
             age: 28,
-            fitnessLevel: "Intermediate"
+            fitnessLevel: "Intermediate",
+            cycleDay: 14,
+            cycleLength: 28
         };
 
 
@@ -23,8 +25,12 @@ export const syncDailyLog = async (req, res) => {
             cycle: bioState.cycle,
             stress: bioState.stress,
             metabolic: bioState.metabolic,
-            physiology: bioState.cycle.physiology, // Assumes cycle agent calculates this
-            behavior: psychology,
+            physiology: bioState.physiology, 
+            behavior: {
+                adherence_risk: 0.1, // Default/Mock
+                motivation_state: "High", // Default/Mock
+                missed_sessions_7d: 0 // Default/Mock
+            },
             symptoms,
             sleep: { hours: sleepHours, quality_score: sleepQuality }
         });

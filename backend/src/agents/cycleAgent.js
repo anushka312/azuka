@@ -1,51 +1,61 @@
 import { callGemini } from "../services/geminiClient.js";
 
-export default async function cycleAgent(userData, logs) {
-    const prompt = `
-    ROLE: You are the Azuka Biological Intelligence Agent (Expert Gynaecologist & Exercise Physiologist).
-    
-    KNOWLEDGE BASE:
-    - Menstrual Phase (Day 1-5): Low hormones, high inflammation, low energy.
-    - Follicular Phase (Day 6-12): Rising Estrogen, high insulin sensitivity, high energy.
-    - Ovulatory (Day 13-15): Peak Estrogen, peak power, high ligament laxity risk.
-    - Luteal (Day 16-28): High Progesterone, thermogenic (+0.5C temp), high cortisol reactivity, muscle breakdown (catabolic).
-    
-    INPUT DATA:
-    ${JSON.stringify({ userData, logs })}
+export default async function cycleAgent(user, logs) {
+  const prompt = `
+ROLE: Azuka Biological Intelligence Agent.
 
-    # DIAGNOSTIC PROTOCOL
-    Your primary task is to "Inference" the user's biological state by cross-referencing their Cycle Day with their Symptoms.
+KNOWLEDGE BASE:
+- Menstrual: Inflammation ↑, Energy ↓
+- Follicular: Insulin Sensitivity ↑, Energy ↑
+- Ovulatory: Power Peak, Ligament Risk ↑
+- Luteal: Cortisol Reactivity ↑, Muscle Breakdown Risk ↑
 
-    1. SYMPTOM CLUSTERING: 
-   - Look for clusters. "Anxiety + Heart Palpitations + Insomnia" = Sympathetic Overload.
-   - "Bloating + Cravings + Low Mood" = Luteal Metabolic Shift.
-   
-    2. CONTEXTUAL OVERRIDE:
-   - Symptoms ALWAYS override the calendar. 
-   - If it is a "Power Day" (Day 12) but the user reports "Cramps and Fatigue," you must treat the body as "High Inflammation" and pull back intensity.
+INPUT DATA:
+- Current: ${JSON.stringify({
+    cycle_day: user.cycleDay,
+    symptoms: logs.symptoms,
+    mood: logs.mood, // Assuming mood is in logs based on usage
+    sleep: logs.sleepHours
+  })}
+- User Profile: ${JSON.stringify({
+    age: user.age,
+    cycleLength: user.cycleLength
+})}
 
-    3. HIDDEN INDICATORS:
-   - Use symptoms to adjust "Fuel Risk." 
-   - Example: "Sugar cravings" mean the user is failing to access fat stores in the Luteal phase. Adjust 'carb_need' to 0.9.
+TASK: Calculate Digital Body State.
 
-    TASK:
-    Calculate the current Digital Body State.
-    
-    FORMULAS TO APPLY:
-    1. inflammation_risk: Base it on cycle phase (Luteal/Menstrual = High) + Sleep Quality + Reported Soreness.
-    2. cortisol_risk: If stress is high AND sleep < 7hrs, risk must be > 0.7.
-    3. carb_need: High in Follicular (for performance), High in Luteal (for serotonin/blood sugar stability).
+RETURN ONLY JSON:
+{
+  "cycle": { "day": number, "phase": "string", "predicted_next_phase": "string" },
+  "physiology": { "energy": 0-1, "fatigue": 0-1, "inflammation_risk": 0-1 },
+  "stress": { "score": 0-1, "cortisol_risk": 0-1, "nervous_system_state": "string" },
+  "metabolic": { 
+      "fuel_risk": 0-1, 
+      "carb_need": 0-1,
+      "daily_calorie_band": { "min": number, "max": number }
+  },
+  
+  // CRITICAL: Standardized keys for the intelligenceLoop
+  "message": "A 1-sentence expert inference for the user dashboard.",
+  "workout": "Suggested movement style based on physiology",
+  "analysis": "Technical notes for the bioSummary"
+}
+`;
 
-    RETURN ONLY VALID JSON (Match this structure):
-    {
-      "cycle": { "day": number, "phase": "string", "predicted_next_phase": "string" },
-      "physiology": { "energy": 0-1, "fatigue": 0-1, "inflammation_risk": 0-1 },
-      "stress": { "score": 0-1, "cortisol_risk": 0-1, "nervous_system_state": "Parasympathetic/Sympathetic/Critical" },
-      "metabolic": { "fuel_risk": 0-1, "carb_need": 0-1 }
-    }
-  `;
-
+  try {
     const response = await callGemini(prompt);
+    const cleanJson = response.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleanJson);
 
-    return JSON.parse(response.replace(/```json|```/g, ""));
+    // UNWRITTEN LOGIC: Manual Validation
+    // If the AI gives a weird day/phase combo, we fix it here.
+    if (parsed.cycle.day > 14 && parsed.cycle.phase === "Follicular") {
+        parsed.cycle.phase = "Luteal";
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error("CycleAgent failure:", error);
+    return null; 
+  }
 }

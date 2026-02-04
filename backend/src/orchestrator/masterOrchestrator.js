@@ -5,7 +5,7 @@ import { callGemini } from "../services/geminiClient.js";
  * Role: The "Central Brain" that synthesizes all 10 agents into a cohesive Daily Path.
  * Logic: Conflict resolution, priority management, and psychological framing.
  */
-export default async function masterOrchestrator(allAgentOutputs) {
+async function masterOrchestrator(allAgentOutputs) {
     const prompt = `
     ROLE: You are the Azuka CEO (The Master Biological Planner).
     
@@ -47,3 +47,30 @@ export default async function masterOrchestrator(allAgentOutputs) {
     
     return JSON.parse(response.replace(/```json|```/g, ""));
 }
+
+masterOrchestrator.determineRoute = async function(logs) {
+    const prompt = `
+    ROLE: Triage Nurse for Biological Systems.
+    
+    INPUT: ${JSON.stringify(logs)}
+    
+    TASK: Determine which specialist agent is most needed right now based on symptoms and logs.
+    Available Agents: 'cycle', 'stress', 'workout'.
+    
+    RETURN ONLY JSON:
+    {
+        "targetAgent": "cycle" | "stress" | "workout",
+        "readinessScore": 0.0 to 1.0 (based on overall vibe)
+    }
+    `;
+    
+    try {
+        const response = await callGemini(prompt);
+        return JSON.parse(response.replace(/```json|```/g, ""));
+    } catch (e) {
+        console.error("Triage failed", e);
+        return { targetAgent: 'workout', readinessScore: 0.5 };
+    }
+};
+
+export default masterOrchestrator;

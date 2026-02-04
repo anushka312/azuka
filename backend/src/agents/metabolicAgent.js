@@ -45,3 +45,48 @@ export default async function metabolicAgent(userData, logs, cycleState) {
     
     return JSON.parse(response.replace(/```json|```/g, ""));
 }
+
+export async function calculateWeeklyEnvelope(user, startDate) {
+    const prompt = `
+    ROLE: You are the Azuka Metabolic Engine.
+    
+    # MISSION: Calculate a 7-Day Caloric & Macro Envelope starting from ${startDate}.
+    
+    # USER PROFILE:
+    - Height: ${user.height} cm
+    - Weight: ${user.weight} kg
+    - BMR: ${user.basalMetabolicRate}
+    - Activity Factor: ${user.activityFactor}
+    - Current Cycle Day: ${user.cycleDay}
+    - Goal: ${user.goals?.primary || "Maintenance"}
+
+    # LOGIC:
+    1. TDEE CALCULATION: Start with BMR * Activity Factor.
+    2. GOAL ADJUSTMENT:
+       - "Fat Loss": Subtract 300-500 kcal from TDEE.
+       - "Muscle Gain": Add 200-300 kcal to TDEE.
+       - "Maintenance": Use TDEE.
+    3. PHASE ADJUSTMENT (Apply on top of Goal):
+       - Luteal Phase: ADD 100-200 kcal (to support RMR increase).
+       - Menstrual Phase: Maintenance (Prioritize comfort).
+       - Follicular Phase: Strict adherence to Goal Adjustment.
+
+    # TASK:
+    Generate a 7-day nutritional forecast.
+
+    RETURN ONLY VALID JSON:
+    [
+      {
+        "day_offset": 0,
+        "phase_prediction": "string",
+        "calorie_target": { "min": number, "max": number },
+        "macro_split": { "protein_pct": number, "carb_pct": number, "fat_pct": number },
+        "focus_nutrient": "string" // e.g., Magnesium, Iron
+      },
+      ... (7 items total)
+    ]
+    `;
+
+    const response = await callGemini(prompt);
+    return JSON.parse(response.replace(/```json|```/g, ""));
+}

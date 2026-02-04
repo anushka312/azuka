@@ -21,8 +21,6 @@ const BodyStateSchema = new mongoose.Schema({
     soreness: Number
   },
 
-  symptoms: [String],
-
   stress: {  //cyle agent
     score: { type: Number, min: 0, max: 1 },
     cortisol_risk: { type: Number, min: 0, max: 1 },

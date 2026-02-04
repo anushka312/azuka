@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({
 
 export async function callGemini(prompt, imageBase64 = null) {
   // Use 'gemini-3-flash' for the best speed/intelligence ratio in 2026
-  const modelId = "gemini-2.5-flash"; 
+  const modelId = "gemini-2.5-flash-lite"; 
 
   const config = {
     model: modelId,

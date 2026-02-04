@@ -5,7 +5,7 @@ import { callGemini } from "../services/geminiClient.js";
  * Role: Estimates cortisol load and identifies the state of the Autonomic Nervous System.
  * Logic: Prioritizes mental symptoms (Anxiety/Brain Fog) over physical metrics.
  */
-export default async function stressAgent(userData, logs, cycleState) {
+export default async function stressAgent(user, logs) {
     const prompt = `
     ROLE: You are the Azuka Autonomic Specialist (Expert in HPA-Axis & Vagal Tone).
     
@@ -15,9 +15,8 @@ export default async function stressAgent(userData, logs, cycleState) {
     - RECOVERY: Sleep under 7 hours or "Night Sweats" indicates the Parasympathetic system failed to engage overnight.
 
     # INPUT DATA:
-    - User Stats: ${JSON.stringify(userData)}
+    - User Stats: ${JSON.stringify(user)}
     - Logs: ${JSON.stringify(logs)}
-    - Cycle Data: ${JSON.stringify(cycleState)}
 
     # DIAGNOSTIC PROTOCOL:
     1. CALCULATE CORTISOL RISK:
@@ -35,10 +34,15 @@ export default async function stressAgent(userData, logs, cycleState) {
 
     RETURN ONLY VALID JSON:
     {
-      "stress_score": 0-1,
+      "score": 0-1, // mapped to stress_score
       "cortisol_risk": 0-1,
       "nervous_system_state": "Parasympathetic | Sympathetic | Critical",
-      "rationale": "Explain how their specific symptoms (e.g., Anxiety) or cycle phase (e.g., Luteal) pushed the system into its current state."
+      "rationale": "Explain how their specific symptoms (e.g., Anxiety) or cycle phase (e.g., Luteal) pushed the system into its current state.",
+      
+      // Standard keys for intelligenceLoop
+      "message": "Advice for stress management",
+      "workout": "Recommended low-stress activity",
+      "analysis": "Technical stress analysis"
     }
     `;
 

@@ -24,13 +24,18 @@ export default async function cycleRecipeAgent(tier1Data, tier2Data) {
     2. FRICTION REDUCTION: If 'max_time_commitment_mins' is low, suggest a "10-minute" or "No-cook" version.
     3. MICRONUTRIENT INJECTION: Explicitly state which "Power Ingredient" addresses today's specific symptom (e.g., Spinach for Iron).
 
+    # NAMING CONVENTION:
+    - The 'meal_name' MUST be culinary and descriptive (e.g., "Lemon Herb Salmon with Quinoa").
+    - DO NOT use "medical" or "phase-based" names (e.g., "Follicular Phase Salad", "Period Power Stew").
+
     # TASK:
     Generate one primary meal suggestion that fits the user's constraints and current phase.
 
     RETURN ONLY VALID JSON:
     {
-      "meal_name": "string",
-      "ingredients": ["string"],
+      "meal_name": "string (Culinary name only)",
+      "ingredients": ["string (quantity + item)"],
+      "instructions": ["string (step-by-step cooking instructions)"],
       "prep_time_mins": number,
       "power_nutrients": { "nutrient_name": "reason for this phase" },
       "biological_rationale": "Why this meal is perfect for Day ${tier1Data.cycle.day} and their current stress/energy levels."

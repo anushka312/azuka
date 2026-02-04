@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import './config/firebase.js'; // Initialize Firebase
 
 
 
@@ -11,12 +12,6 @@ import cors from 'cors';
 import apiRoutes from './routes/api.js';
 
 dotenv.config();
-
-console.log("--- KEY DEBUG ---");
-console.log("Key Length:", process.env.GEMINI_API_KEY?.length);
-console.log("Starts with AIza:", process.env.GEMINI_API_KEY?.startsWith("AIza"));
-console.log("Ends with quote:", process.env.GEMINI_API_KEY?.endsWith('"'));
-console.log("-----------------");
 
 console.log("Current Directory:", process.cwd());
 console.log("Variables Loaded:", process.env.MONGODB_URI ? "YES" : "NO");

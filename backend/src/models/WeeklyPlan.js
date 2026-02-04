@@ -27,6 +27,12 @@ const DayPlanSchema = new mongoose.Schema({
     max: Number
   },
 
+  macro_targets: {
+    protein: Number, // grams
+    carbs: Number,
+    fats: Number
+  },
+
   status: {
     type: String,
     enum: ["planned", "completed", "missed", "rescheduled"],
