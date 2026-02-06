@@ -1,35 +1,48 @@
+import React, { useState } from 'react';
 import { Tabs } from 'expo-router';
-import React from 'react';
-
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { View, StyleSheet } from 'react-native';
+import { BottomNav } from '../../components/BottomNav';
+import { QuickLogModal } from '../../components/QuickLogModal';
+import { toast } from 'sonner-native';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const [showQuickLog, setShowQuickLog] = useState(false);
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: { display: 'none' }, 
         }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+        tabBar={(props) => {
+          const routeName = props.state.routes[props.state.index].name;
+          const activeTab = routeName === 'index' ? 'home' : routeName;
+          
+          return (
+            <BottomNav
+              activeTab={activeTab as any}
+              onTabChange={(tab) => {
+                const route = tab === 'home' ? 'index' : tab;
+                props.navigation.navigate(route);
+              }}
+              onQuickLog={() => setShowQuickLog(true)}
+            />
+          );
         }}
+      >
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="workout" />
+        <Tabs.Screen name="food" />
+        <Tabs.Screen name="mindset" />
+      </Tabs>
+
+      {/* MODAL FIX: The Modal is placed here to overlay everything in the tabs */}
+      <QuickLogModal
+        isOpen={showQuickLog}
+        onClose={() => setShowQuickLog(false)}
+        onSelectType={(type) => toast.success(`Logged ${type}`)}
       />
-    </Tabs>
+    </View>
   );
 }
