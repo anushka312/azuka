@@ -10,11 +10,14 @@ interface GlassCardProps {
 export function GlassCard({ children, style }: GlassCardProps) {
   return (
     <View style={[styles.cardContainer, style]}>
-      <BlurView intensity={40} tint="light" style={styles.blur}>
-        <View style={styles.content}>
-          {children}
-        </View>
-      </BlurView>
+      <BlurView 
+        intensity={40} 
+        tint="light" 
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.content}>
+        {children}
+      </View>
     </View>
   );
 }

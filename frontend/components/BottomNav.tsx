@@ -23,7 +23,11 @@ export function BottomNav({ activeTab, onTabChange, onQuickLog }: BottomNavProps
 
   return (
     <View style={styles.navWrapper}>
-      <BlurView intensity={80} tint="light" style={styles.blurContainer}>
+      <BlurView 
+        intensity={200} 
+        tint="systemMaterial"
+        style={styles.blurContainer}
+      >
         <View style={styles.navInner}>
           {leftTabs.map((tab) => (
             <NavButton
@@ -105,6 +109,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     marginTop: 4,
+    fontFamily: 'FunnelDisplay-Bold',
   },
   activeDot: {
     width: 4,

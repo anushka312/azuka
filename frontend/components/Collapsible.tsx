@@ -52,6 +52,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1C3927',
+    fontFamily: 'FunnelDisplay-SemiBold',
   },
   content: {
     padding: 16,

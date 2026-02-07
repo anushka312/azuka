@@ -1,4 +1,25 @@
 import { verifyIdToken } from '../config/firebase.js';
+import jwt from 'jsonwebtoken';
+
+/**
+ * Middleware to verify Custom JWT (from authController)
+ */
+export const auth = async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.split(" ")[1];
+
+        if (!token) return res.status(401).json({ message: "Unauthenticated" });
+
+        const decodedData = jwt.verify(token, "SECRET_KEY_DEV"); // TODO: Use env variable
+
+        req.userId = decodedData?.id;
+
+        next();
+    } catch (error) {
+        console.log(error);
+        res.status(401).json({ message: "Unauthenticated" });
+    }
+};
 
 /**
  * Middleware to verify Firebase ID Token

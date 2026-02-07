@@ -9,13 +9,15 @@ import {
     trackCalories,
     getDigitalTwin
 } from '../../controllers/autonomousFeatures.js';
-import { signup, login, deleteUser } from '../../controllers/authController.js';
+import { signup, login, deleteUser, getUserProfile } from '../../controllers/authController.js';
+import { auth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // Auth
 router.post('/auth/signup', signup);
 router.post('/auth/login', login);
+router.get('/auth/profile', auth, getUserProfile);
 router.delete('/auth/user/:id', deleteUser);
 
 // Original Sync

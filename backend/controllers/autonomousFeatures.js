@@ -1,6 +1,7 @@
 import WeeklyPlan from "../src/models/WeeklyPlan.js";
 import User from "../src/models/User.js";
 import BodyState from "../src/models/BodyState.js";
+import Calendar from "../src/models/CalendarEvent.js";
 import workoutAgent, { generateWeekPlan } from "../src/agents/workoutAgent.js";
 import metabolicAgent, { calculateWeeklyEnvelope } from "../src/agents/metabolicAgent.js";
 import cravingPatternAgent from "../src/agents/cravingPatternAgent.js";
@@ -127,6 +128,34 @@ export const generateWorkoutPlan = async (req, res) => {
         });
 
         await plan.save();
+
+        // --- SYNC TO CALENDAR ---
+        // Clear existing planned workouts for this week (keep completed ones)
+        const weekEnd = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
+        await Calendar.deleteMany({ 
+            userId: user._id, 
+            date: { $gte: startOfWeek, $lt: weekEnd },
+            type: "workout",
+            completed: false 
+        });
+
+        const calendarEvents = weekPlanData.map(dayData => {
+             const date = new Date(startOfWeek);
+             date.setDate(date.getDate() + dayData.day_offset);
+             return {
+                 userId: user._id,
+                 title: dayData.workout.title,
+                 type: "workout",
+                 planned: true,
+                 completed: false,
+                 date: date,
+                 phase: dayData.phase_prediction,
+                 refType: "WeeklyPlan"
+             };
+        });
+        await Calendar.insertMany(calendarEvents);
+        // ------------------------
+
         res.json({ success: true, plan: weekPlanData });
 
     } catch (error) {

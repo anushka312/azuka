@@ -100,3 +100,19 @@ export const deleteUser = async (req, res) => {
         res.status(500).json({ success: false, message: "Something went wrong" });
     }
 };
+
+export const getUserProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Don't send password back
+        const { password, ...userData } = user._doc;
+
+        res.status(200).json({ success: true, result: userData });
+    } catch (error) {
+        console.error("Get Profile Error:", error);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+};

@@ -39,3 +39,6 @@ export function CrescentIcon({ size = 24, color = "#000" }: IconProps) {
 export const MiniStarIcon = (props: IconProps) => <StarIcon size={14} {...props} />;
 export const MiniPetalIcon = (props: IconProps) => <PetalIcon size={14} {...props} />;
 export const MiniCrescentIcon = (props: IconProps) => <CrescentIcon size={14} {...props} />;
+//MiniStarIcon
+//MiniPetalIcon
+//MiniCrescentIcon

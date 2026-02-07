@@ -1,11 +1,14 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Pressable, Dimensions, Platform } from 'react-native';
-import { X, Activity, Camera, Heart, Gauge } from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
-import { GlassCard } from './GlassCard';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, Pressable, Dimensions, Platform, ScrollView } from 'react-native';
+import { X, Activity, Camera, Heart, Gauge, Ruler } from 'lucide-react-native';
+import Animated, { 
+  SlideInDown,
+  SlideOutDown 
+} from 'react-native-reanimated';
+import { lightTheme as theme } from '@/constants/theme';
 
-const { width } = Dimensions.get('window');
-type LogType = 'symptom' | 'workout' | 'food' | 'mood';
+const { width, height } = Dimensions.get('window');
+type LogType = 'symptom' | 'workout' | 'food' | 'mood' | 'body';
 
 interface QuickLogModalProps {
   isOpen: boolean;
@@ -15,73 +18,154 @@ interface QuickLogModalProps {
 
 export function QuickLogModal({ isOpen, onClose, onSelectType }: QuickLogModalProps) {
   const options = [
-    { type: 'symptom', icon: Heart, label: 'Log Symptoms', color: '#C39588', desc: 'Pain, cravings' },
-    { type: 'workout', icon: Activity, label: 'Log Workout', color: '#29555F', desc: 'Exercise record' },
-    { type: 'food', icon: Camera, label: 'Scan Food', color: '#83965F', desc: 'Capture meals' },
-    { type: 'mood', icon: Gauge, label: 'Log Mood', color: '#BB8585', desc: 'Check-in' },
+    { type: 'symptom', icon: Heart, label: 'Symptoms', color: theme.azuka.rose, desc: 'Pain, cravings & physical changes' },
+    { type: 'workout', icon: Activity, label: 'Workout', color: theme.azuka.teal, desc: 'Log your movement and intensity' },
+    { type: 'food', icon: Camera, label: 'Nutrition', color: theme.azuka.sage, desc: 'Scan or log your phase-synced meals' },
+    { type: 'mood', icon: Gauge, label: 'Mindset', color: theme.azukaExtended.roseLight, desc: 'Daily emotional check-in' },
+    { type: 'body', icon: Ruler, label: 'Metrics', color: theme.azukaExtended.tealLight, desc: 'Weight, temperature & stats' },
   ];
 
   return (
     <Modal
       visible={isOpen}
       transparent={true}
-      animationType="slide"
-      statusBarTranslucent={true} // Fix for Android status bar overlap
+      animationType="none"
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.centeredView}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-        </Pressable>
+      <View style={styles.overlay}>
+        {/* Opaque Background Backdrop */}
+        <Pressable 
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(28, 57, 39, 0.7)' }]} 
+          onPress={onClose} 
+        />
         
-        <View style={styles.modalContainer}>
-          <GlassCard style={styles.modalContent}>
-            <View style={styles.header}>
-              <View>
-                <Text style={styles.headerTitle}>Quick Log</Text>
-                <Text style={styles.headerSubtitle}>Choose an activity</Text>
-              </View>
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                <X size={20} color="#83965F" />
-              </TouchableOpacity>
-            </View>
+        <Animated.View 
+          entering={SlideInDown.duration(350)} // Smooth slide up
+          exiting={SlideOutDown.duration(300)}
+          style={[styles.modalContainer, { backgroundColor: theme.background }]}
+        >
+          {/* Visual Grabber */}
+          <View style={[styles.grabber, { backgroundColor: theme.azuka.sage, opacity: 0.3 }]} />
 
-            <View style={styles.grid}>
+          <View style={styles.header}>
+            <View>
+              <Text style={[styles.headerTitle, { color: theme.azuka.forest }]}>Quick Log</Text>
+              <Text style={[styles.headerSubtitle, { color: theme.azuka.sage }]}>Choose an activity</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={onClose} 
+              style={[styles.closeBtn, { backgroundColor: theme.border }]}
+            >
+              <X size={20} color={theme.azuka.forest} />
+            </TouchableOpacity>
+          </View>
+
+          {/* ScrollView ensures all elements are accessible in the half-page view */}
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollPadding}
+          >
+            <View style={styles.listGap}>
               {options.map((option) => (
                 <TouchableOpacity
                   key={option.type}
-                  style={styles.optionCard}
+                  activeOpacity={0.7}
+                  style={[styles.optionCard, { 
+                    backgroundColor: theme.inputBackground, 
+                    borderColor: theme.border 
+                  }]}
                   onPress={() => {
                     onSelectType(option.type as LogType);
                     onClose();
                   }}
                 >
-                  <View style={[styles.iconWrapper, { backgroundColor: `${option.color}20` }]}>
-                    <option.icon size={24} color={option.color} />
+                  <View style={[styles.iconWrapper, { backgroundColor: `${option.color}15` }]}>
+                    <option.icon size={22} color={option.color} />
                   </View>
-                  <Text style={styles.optionLabel}>{option.label}</Text>
-                  <Text style={styles.optionDesc}>{option.desc}</Text>
+                  <View style={styles.textContainer}>
+                    <Text style={[styles.optionLabel, { color: theme.azuka.forest }]}>{option.label}</Text>
+                    <Text style={[styles.optionDesc, { color: theme.azuka.sage }]}>{option.desc}</Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
-          </GlassCard>
-        </View>
+          </ScrollView>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  centeredView: { flex: 1, justifyContent: 'flex-end' },
-  modalContainer: { padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
-  modalContent: { padding: 24, borderRadius: 32 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1C3927' },
-  headerSubtitle: { fontSize: 14, color: '#83965F' },
-  closeBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
-  optionCard: { width: (width - 80) / 2, backgroundColor: 'rgba(255,255,255,0.5)', padding: 16, borderRadius: 24 },
-  iconWrapper: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  optionLabel: { fontSize: 15, fontWeight: '700', color: '#1C3927' },
-  optionDesc: { fontSize: 11, color: '#83965F' },
+  overlay: { 
+    flex: 1, 
+    justifyContent: 'flex-end' 
+  },
+  modalContainer: { 
+    height: height * 0.55, 
+    width: width,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 20,
+  },
+  grabber: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  headerTitle: { fontSize: 22, fontWeight: '600', fontFamily: 'FunnelDisplay-Bold' },
+  headerSubtitle: { fontSize: 14, fontFamily: 'FunnelDisplay-Regular', marginTop: -2 },
+  closeBtn: { padding: 6, borderRadius: 20 },
+  scrollPadding: {
+    paddingBottom: 40, // Space at the bottom of the list
+  },
+  listGap: {
+    gap: 10,
+  },
+  optionCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    padding: 12, 
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  iconWrapper: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginRight: 14 
+  },
+  textContainer: {
+    flex: 1,
+  },
+  optionLabel: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    fontFamily: 'FunnelDisplay-Bold' 
+  },
+  optionDesc: { 
+    fontSize: 12, 
+    fontFamily: 'FunnelDisplay-Regular',
+    marginTop: 1,
+    opacity: 0.9
+  },
 });
