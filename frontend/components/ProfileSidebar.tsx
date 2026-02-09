@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Dimensions, TextInput, Modal, Pressable } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Modal, Pressable, Dimensions } from 'react-native';
 import { toast } from 'sonner-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutRight } from 'react-native-reanimated';
 import { User, Ruler, Weight, Heart, X, Edit2, Save, LogOut, ChevronDown, Target } from 'lucide-react-native';
-import { lightTheme as theme } from '../constants/theme'; // Utilizing your theme
+import { lightTheme as theme } from '../constants/theme';
 import { BlurView } from 'expo-blur';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from '../constants/config';
 
 const { width, height } = Dimensions.get('window');
 
@@ -13,17 +15,50 @@ const FONT_REG = 'FunnelDisplay-Regular';
 const FONT_BOLD = 'FunnelDisplay-Bold';
 const FONT_SB = 'FunnelDisplay-SemiBold';
 
-export function ProfileSidebar({ isOpen, onClose, userData, onUpdateUserData }: any) {
+export function ProfileSidebar({ isOpen, onClose, userData, onUpdateUserData, onLogout }: any) {
   const insets = useSafeAreaInsets();
   const [isEditing, setIsEditing] = useState(false);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const goalOptions = ["Balance Hormones", "Weight Management", "Increase Energy", "Reduce Stress", "Improve Sleep"];
   const bmi = (parseFloat(userData.weight) / Math.pow(parseFloat(userData.height) / 100, 2)).toFixed(1);
 
-  const handleSave = () => {
-    setIsEditing(false);
-    toast.success('Profile Synced');
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem('userToken');
+      
+      const response = await fetch(`${API_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            name: userData.name,
+            age: userData.age,
+            height: userData.height,
+            weight: userData.weight,
+            goals: userData.goals
+        })
+      });
+
+      const json = await response.json();
+
+      if (json.success) {
+        onUpdateUserData(json.result);
+        setIsEditing(false);
+        toast.success('Profile Synced');
+      } else {
+        toast.error('Update Failed', { description: json.message });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Error', { description: 'Failed to update profile' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,7 +87,11 @@ export function ProfileSidebar({ isOpen, onClose, userData, onUpdateUserData }: 
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView 
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={styles.scrollContent}
+          >
             
             {/* User Hero */}
             <View style={styles.profileHero}>
@@ -85,9 +124,33 @@ export function ProfileSidebar({ isOpen, onClose, userData, onUpdateUserData }: 
             {/* Stats */}
             <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: theme.azuka.sage }]}>Physical Profile</Text>
-              <StatRow icon={Ruler} label="Height" value={userData.height} unit="cm" color={theme.azuka.teal} />
-              <StatRow icon={Weight} label="Weight" value={userData.weight} unit="kg" color={theme.azuka.teal} />
-              <StatRow icon={Heart} label="Age" value={userData.age} unit="yrs" color={theme.azuka.rose} />
+              <StatRow 
+                icon={Ruler} 
+                label="Height" 
+                value={userData.height} 
+                unit="cm" 
+                color={theme.azuka.teal} 
+                isEditing={isEditing}
+                onChange={(v: string) => onUpdateUserData({...userData, height: v})}
+              />
+              <StatRow 
+                icon={Weight} 
+                label="Weight" 
+                value={userData.weight} 
+                unit="kg" 
+                color={theme.azuka.teal} 
+                isEditing={isEditing}
+                onChange={(v: string) => onUpdateUserData({...userData, weight: v})}
+              />
+              <StatRow 
+                icon={Heart} 
+                label="Age" 
+                value={userData.age} 
+                unit="yrs" 
+                color={theme.azuka.rose} 
+                isEditing={isEditing}
+                onChange={(v: string) => onUpdateUserData({...userData, age: v})}
+              />
             </View>
 
             {/* Goals */}
@@ -109,7 +172,7 @@ export function ProfileSidebar({ isOpen, onClose, userData, onUpdateUserData }: 
           </ScrollView>
 
           <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
-            <TouchableOpacity style={[styles.logoutBtn, { borderColor: theme.azuka.rose + '30' }]}>
+            <TouchableOpacity style={[styles.logoutBtn, { borderColor: theme.azuka.rose + '30' }]} onPress={onLogout}>
               <LogOut size={16} color={theme.azuka.rose} />
               <Text style={[styles.logoutText, { color: theme.azuka.rose }]}>Log Out</Text>
             </TouchableOpacity>
@@ -138,14 +201,26 @@ export function ProfileSidebar({ isOpen, onClose, userData, onUpdateUserData }: 
   );
 }
 
-function StatRow({ icon: Icon, label, value, unit, color }: any) {
+function StatRow({ icon: Icon, label, value, unit, color, isEditing, onChange }: any) {
   return (
     <View style={[styles.statRow, { borderBottomColor: theme.azuka.sage + '10' }]}>
       <View style={styles.statLeft}>
         <Icon size={16} color={color} />
         <Text style={[styles.statLabel, { color: theme.azuka.forest }]}>{label}</Text>
       </View>
-      <Text style={[styles.statValue, { color: theme.azuka.forest }]}>{value} {unit}</Text>
+      {isEditing ? (
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+           <TextInput 
+              value={value} 
+              onChangeText={onChange}
+              keyboardType="numeric"
+              style={[styles.statValueInput, { color: theme.azuka.forest, borderBottomColor: theme.azuka.teal }]}
+           />
+           <Text style={[styles.statValue, { color: theme.azuka.forest, opacity: 0.5 }]}>{unit}</Text>
+        </View>
+      ) : (
+        <Text style={[styles.statValue, { color: theme.azuka.forest }]}>{value} {unit}</Text>
+      )}
     </View>
   );
 }
@@ -179,10 +254,19 @@ const styles = StyleSheet.create({
   goalLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   goalValue: { fontSize: 15, fontFamily: FONT_SB },
   footer: { paddingHorizontal: 24 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 16, borderSize: 1, backgroundColor: '#FFF' },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 16, borderWidth: 1, backgroundColor: '#FFF' },
   logoutText: { fontFamily: FONT_BOLD, fontSize: 14 },
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', padding: 30 },
   pickerContent: { borderRadius: 24, padding: 16 },
   pickerItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  pickerText: { fontSize: 16, textAlign: 'center' }
+  pickerText: { fontSize: 16, textAlign: 'center' },
+  statValueInput: { fontSize: 15, fontFamily: FONT_SB, borderBottomWidth: 1, minWidth: 40, textAlign: 'right' },
+  progressCard: { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 },
+  progressTitle: { fontSize: 14, fontFamily: FONT_BOLD },
+  progressSubtitle: { fontSize: 12, fontFamily: FONT_REG },
+  progressBarBg: { height: 8, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  progressBarFill: { height: '100%', borderRadius: 4 },
+  progressLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  progressLabel: { fontSize: 10, fontFamily: FONT_REG }
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,8 +7,9 @@ import {
   ScrollView,
   Animated,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
-import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from 'react-native-svg';
 import {
   Activity,
@@ -16,15 +17,16 @@ import {
   Flame,
   Carrot,
   Calendar,
-  Camera,
   ClipboardList,
   TrendingUp,
   Menu,
+  Moon,
 } from 'lucide-react-native';
 import { lightTheme as theme } from '../../constants/theme';
 import { GlassCard } from '../GlassCard';
 import { CrescentIcon } from '../icons/AzukaIcons';
-import { Theme } from '../../constants/theme';
+import { API_URL } from '../../constants/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -44,21 +46,126 @@ export function HomeScreen({
   onScanFood,
   onOpenSidebar,
 }: HomeScreenProps) {
-  const insets = useSafeAreaInsets();
-  const currentPhase = {
-    name: 'Luteal',
-    day: 22,
-    color: '#BB8585',
-    icon: CrescentIcon,
+  // const insets = useSafeAreaInsets();
+  
+  // State for dynamic data
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(null);
+
+  const [error, setError] = useState<string | null>(null);
+
+  // Time-based greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning,";
+    if (hour < 18) return "Good Afternoon,";
+    return "Good Evening,";
   };
 
-  const bodyState = [
-    { label: 'Energy', value: 65, color: theme.azukaExtended.forestLight, icon: Zap },
-    { label: 'Fatigue', value: 45, color: theme.azuka.rose, icon: Activity },
-    { label: 'Stress', value: 30, color: theme.azukaExtended.tealLight, icon: TrendingUp },
-    { label: 'Inflammation', value: 40, color: theme.azukaExtended.roseLight, icon: Flame },
-    { label: 'Carb Need', value: 75, color: '#83965F', icon: Carrot },
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = await AsyncStorage.getItem('userToken');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      try {
+        const response = await fetch(`${API_URL}/home/dashboard`, { 
+            headers,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        const json = await response.json();
+        if (json.success) {
+            setData(json);
+        } else {
+            throw new Error(json.message || "Failed to load dashboard");
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+            throw new Error("Connection timed out. Please check your internet.");
+        }
+        throw fetchError;
+      }
+    } catch (error: any) {
+      console.error("Home Fetch Error:", error);
+      setError("Unable to load your personalized insights.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.azuka.sage} />
+        <Text style={{ marginTop: 16, color: theme.azuka.sage, fontFamily: 'FunnelDisplay-Medium' }}>
+            Analyzing your biometrics...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <Activity size={48} color={theme.azuka.rose} />
+        <Text style={[styles.sectionTitle, { textAlign: 'center', marginTop: 16 }]}>
+            Connection Issue
+        </Text>
+        <Text style={{ textAlign: 'center', color: theme.azuka.sage, marginBottom: 24, fontFamily: 'FunnelDisplay-Regular' }}>
+            {error}
+        </Text>
+        <TouchableOpacity 
+            onPress={fetchDashboardData}
+            style={{ backgroundColor: theme.azuka.forest, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
+        >
+            <Text style={{ color: '#FFF', fontFamily: 'FunnelDisplay-Bold' }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Fallbacks if data fails
+  const user = data?.user || { name: 'Alicia', cycleDay: 1, phase: 'Follicular', phaseColor: theme.azuka.teal, cycleProgress: 10 };
+  const insight = data?.insight || { title: 'Welcome', text: 'Start logging to get personalized insights.' };
+  
+  const DEFAULT_BODY_STATE = [
+      { label: 'Energy', value: 0, color: theme.azuka.teal },
+      { label: 'Sleep', value: 0, color: theme.azuka.sage },
+      { label: 'Stress', value: 0, color: theme.azuka.rose },
   ];
+  const bodyState = (data?.bodyState && data.bodyState.length > 0) ? data.bodyState : DEFAULT_BODY_STATE;
+  
+  // Map backend body state to icons
+  const getIcon = (label: string) => {
+    switch(label) {
+      case 'Energy': return Zap;
+      case 'Fatigue': return Activity;
+      case 'Stress': return TrendingUp;
+      case 'Inflammation': return Flame;
+      case 'Sleep': return Moon;
+      case 'Carb Need': return Carrot;
+      // Agent-driven labels
+      case 'Fuel Risk': return Flame;     // Metabolic risk
+      case 'Adherence': return ClipboardList; // Consistency
+      case 'Motivation': return Zap;      // Drive/Energy
+      default: return Activity;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -66,8 +173,8 @@ export function HomeScreen({
         {/* Header */}
         <View style={[styles.header, { paddingTop: 10 }]}>
           <View>
-            <Text style={styles.greeting}>Good Morning,</Text>
-            <Text style={styles.userName}>Alicia</Text>
+            <Text style={styles.greeting}>{getGreeting()}</Text>
+            <Text style={styles.userName}>{user.name}</Text>
           </View>
           <TouchableOpacity style={styles.profileBtn} onPress={onOpenSidebar}>
             <Menu size={24} color={theme.azuka.forest} />
@@ -78,12 +185,12 @@ export function HomeScreen({
         <GlassCard style={styles.phaseCard}>
           <View style={styles.phaseHeader}>
             <View style={styles.phaseTitleRow}>
-              <View style={[styles.phaseIconBox, { backgroundColor: `${currentPhase.color}20` }]}>
-                <currentPhase.icon size={24} color={currentPhase.color} />
+              <View style={[styles.phaseIconBox, { backgroundColor: `${user.phaseColor}20` }]}>
+                <CrescentIcon size={24} color={user.phaseColor} />
               </View>
               <View>
-                <Text style={styles.phaseName}>{currentPhase.name}</Text>
-                <Text style={styles.phaseDay}>Day {currentPhase.day} of cycle</Text>
+                <Text style={styles.phaseName}>{user.phase}</Text>
+                <Text style={styles.phaseDay}>Day {user.cycleDay} of cycle</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onOpenCalendar} style={styles.calendarBtn}>
@@ -99,21 +206,21 @@ export function HomeScreen({
                 cx="80"
                 cy="80"
                 r="70"
-                stroke="#F1ECCE"
+                stroke="#EEEDD1"
                 strokeWidth="12"
                 fill="none"
               />
               {/* Animated Progress Circle */}
-              <CircularProgress size={160} strokeWidth={12} percentage={73} color={currentPhase.color} />
+              <CircularProgress size={160} strokeWidth={12} percentage={user.cycleProgress} color={user.phaseColor} />
             </Svg>
             <View style={styles.ringTextCenter}>
-              <Text style={styles.ringPercent}>73%</Text>
-              <Text style={styles.ringLabel}>Optimal</Text>
+              <Text style={styles.ringPercent}>{user.cycleProgress}%</Text>
+              <Text style={styles.ringLabel}>Cycle</Text>
             </View>
           </View>
 
           <View style={styles.tagRow}>
-            <View style={styles.statusTag}><Text style={styles.tagText}>Light Activity</Text></View>
+            <View style={styles.statusTag}><Text style={styles.tagText}>{user.phase} Phase</Text></View>
             <View style={styles.statusTag}><Text style={styles.tagText}>High Protein</Text></View>
           </View>
         </GlassCard>
@@ -122,20 +229,16 @@ export function HomeScreen({
         <GlassCard style={styles.bodyStateCard}>
           <Text style={styles.sectionTitle}>Digital Body State</Text>
           <View style={styles.progressList}>
-            {bodyState.map((item, index) => (
-              <BodyStateRow key={item.label} item={item} index={index} />
+            {bodyState.map((item: any, index: number) => (
+              <BodyStateRow 
+                key={item.label} 
+                item={{...item, icon: getIcon(item.label)}} 
+                index={index} 
+              />
             ))}
           </View>
 
-          {/* Mini Forecast Chart */}
-          <View style={styles.forecastContainer}>
-            <Text style={styles.forecastLabel}>NEXT 7 DAYS FORCAST</Text>
-            <View style={styles.barChart}>
-              {[65, 70, 75, 80, 72, 68, 65].map((h, i) => (
-                <MiniBar key={i} height={h} index={i} />
-              ))}
-            </View>
-          </View>
+          {/* Mini Forecast Chart Removed */}
         </GlassCard>
 
         {/* Daily Insights */}
@@ -146,9 +249,9 @@ export function HomeScreen({
                <Zap size={24} color="#83965F" />
              </View>
              <View style={{ flex: 1 }}>
-               <Text style={styles.insightTitle}>Luteal Phase Power</Text>
+               <Text style={styles.insightTitle}>{insight.title}</Text>
                <Text style={styles.insightText}>
-                 Your energy might dip slightly today. Focus on complex carbs and magnesium-rich foods to stay balanced.
+                 {insight.text}
                </Text>
              </View>
           </View>
@@ -172,7 +275,7 @@ function CircularProgress({ size, strokeWidth, percentage, color }: any) {
       duration: 1000,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [circumference, percentage, animatedValue]);
 
   return (
     <AnimatedCircle
@@ -199,7 +302,7 @@ function BodyStateRow({ item, index }: any) {
       delay: index * 100,
       useNativeDriver: false,
     }).start();
-  }, []);
+  }, [index, item.value, widthAnim]);
 
   return (
     <View style={styles.bodyRow}>
@@ -225,38 +328,16 @@ function BodyStateRow({ item, index }: any) {
   );
 }
 
-function MiniBar({ height, index }: any) {
-  const hAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(hAnim, {
-      toValue: height,
-      duration: 500,
-      delay: 800 + (index * 50),
-      useNativeDriver: false,
-    }).start();
-  }, []);
-
-  return (
-    <Animated.View 
-      style={[
-        styles.miniBar, 
-        { height: hAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }
-      ]} 
-    />
-  );
-}
-
-function QuickActionBtn({ icon: Icon, label, color, onPress }: any) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.qaBtn}>
-      <View style={[styles.qaIconCircle, { backgroundColor: `${color}20` }]}>
-        <Icon size={20} color={color} />
-      </View>
-      <Text style={styles.qaLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
+// function QuickActionBtn({ icon: Icon, label, color, onPress }: any) {
+//   return (
+//     <TouchableOpacity onPress={onPress} style={styles.qaBtn}>
+//       <View style={[styles.qaIconCircle, { backgroundColor: `${color}20` }]}>
+//         <Icon size={20} color={color} />
+//       </View>
+//       <Text style={styles.qaLabel}>{label}</Text>
+//     </TouchableOpacity>
+//   );
+// }
 
 // --- Styles ---
 
@@ -375,30 +456,6 @@ const styles = StyleSheet.create({
   bodyBarFill: {
     height: '100%',
     borderRadius: 4,
-  },
-  forecastContainer: {
-    marginTop: 24,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.5)',
-  },
-  forecastLabel: {
-    fontSize: 14,
-    color: theme.azuka.sage,
-    marginBottom: 12,
-    fontFamily: 'FunnelDisplay-SemiBold',
-  },
-  barChart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 64,
-    gap: 4,
-  },
-  miniBar: {
-    flex: 1,
-    backgroundColor: theme.azukaExtended.tealLighter,
-    borderRadius: 4,
-    opacity: 0.6,
   },
   quickActions: {
     flexDirection: 'row',

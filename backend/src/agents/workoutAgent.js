@@ -47,7 +47,7 @@ export default async function workoutAgent(user, logs) {
 
     const response = await callGemini(prompt);
     
-    return JSON.parse(response.replace(/```json|```/g, ""));
+    return cleanJSON(response);
 }
 
 export async function generateWeekPlan(user, startDate, logs = []) {
@@ -70,21 +70,32 @@ export async function generateWeekPlan(user, startDate, logs = []) {
     - Map the predicted cycle phase for each of the next 7 days.
     - Match intensity to the phase (e.g., Follicular = Build, Ovulatory = Peak, Luteal = Taper).
     - Ensure variety: Mix Strength, Mobility, and Conditioning.
+    - FREQUENCY: Schedule 3-5 active workouts per week. Avoid consecutive Rest days unless necessary.
 
     # TASK:
-    Generate a JSON array of 7 daily plans.
+    Generate a JSON array of 7 daily plans. Include nutrition targets based on phase (e.g., Luteal = higher calories).
+    IMPORTANT: All calorie values MUST be in Kcal (Calories), NOT kJ. Max calorie target should typically be between 1200-3500 kcal unless elite athlete.
 
     RETURN ONLY VALID JSON:
     [
       {
         "day_offset": 0, // 0 = today, 1 = tomorrow
         "phase_prediction": "string",
+        "readiness": "Push | Maintain | Gentle | Recover", // STRICT ENUM: Do NOT use 'Peak', 'Build', or 'Taper'.
         "workout": {
           "title": "string",
           "style": "Strength | HIIT | Mobility | Zone 2 | Rest",
           "duration_mins": number,
           "intensity": "Low | Medium | High",
-          "focus": "string"
+          "focus": "string",
+          "muscles": ["string", "string"], // e.g. ["Glutes", "Core"]
+          "calories_burn_est": number, // e.g. 320
+          "volume": "string" // e.g. "3 Sets x 12"
+        },
+        "analysis": "Specific analysis of why this session fits the phase (e.g. 'Lower intensity but high engagement to support hormone stability')",
+        "nutrition": {
+            "calories": { "min": number, "max": number },
+            "macros": { "protein_pct": number, "carb_pct": number, "fat_pct": number }
         },
         "rationale": "Why this fits the predicted phase."
       },
@@ -93,5 +104,74 @@ export async function generateWeekPlan(user, startDate, logs = []) {
     `;
 
     const response = await callGemini(prompt);
-    return JSON.parse(response.replace(/```json|```/g, ""));
+    
+    let result = cleanJSON(response);
+    
+    // Handle case where agent wraps array in an object
+    if (result && !Array.isArray(result)) {
+        if (Array.isArray(result.days)) result = result.days;
+        else if (Array.isArray(result.plan)) result = result.plan;
+        else if (Array.isArray(result.schedule)) result = result.schedule;
+    }
+
+    // SAFETY CLAMP: Ensure calories are within realistic bounds
+    if (Array.isArray(result)) {
+        result = result.map(day => {
+            if (day.nutrition && day.nutrition.calories) {
+                let min = day.nutrition.calories.min || 2000;
+                let max = day.nutrition.calories.max || 2200;
+                
+                // Convert kJ to kcal if suspiciously high
+                if (min > 5000) min = Math.round(min / 4.184);
+                if (max > 5000) max = Math.round(max / 4.184);
+
+                // Hard Clamp (1200 - 4000)
+                min = Math.max(1200, Math.min(min, 4000));
+                max = Math.max(min + 100, Math.min(max, 4200));
+                
+                day.nutrition.calories.min = min;
+                day.nutrition.calories.max = max;
+            }
+            return day;
+        });
+    }
+    
+    return result;
+}
+
+// Helper to clean JSON response from LLM
+function cleanJSON(text) {
+    if (!text) return null;
+    try {
+        // Remove markdown code blocks if present
+        let clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        
+        // Find the first valid JSON start character
+        const firstOpenBrace = clean.indexOf('{');
+        const firstOpenBracket = clean.indexOf('[');
+        
+        let startIndex = -1;
+        if (firstOpenBrace !== -1 && (firstOpenBracket === -1 || firstOpenBrace < firstOpenBracket)) {
+            startIndex = firstOpenBrace;
+        } else {
+            startIndex = firstOpenBracket;
+        }
+        
+        if (startIndex !== -1) {
+            clean = clean.substring(startIndex);
+            // We rely on JSON.parse to fail if there is trailing garbage, 
+            // but often it's better to find the last closing character.
+            // However, regex extraction is safer for simple cases.
+            const match = clean.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+            if (match) {
+                return JSON.parse(match[0]);
+            }
+        }
+        
+        return JSON.parse(clean);
+    } catch (e) {
+        console.error("JSON Parse Error in Agent:", e);
+        console.log("Raw Text:", text);
+        return null;
+    }
 }

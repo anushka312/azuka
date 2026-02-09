@@ -5,7 +5,7 @@ const WorkoutLogSchema = new mongoose.Schema({
   date: { type: Date, required: true },
 
   planned: {
-    type: String,
+    activityType: String,
     duration_min: Number,
     intensity: String
   },
@@ -13,7 +13,7 @@ const WorkoutLogSchema = new mongoose.Schema({
   completed: { type: Boolean, default: false },
 
   self_logged: {
-    type: String,
+    activityType: String,
     duration_min: Number,
     calories_burned: Number
   },

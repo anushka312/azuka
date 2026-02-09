@@ -115,6 +115,46 @@ export const darkTheme = {
     border: 'oklch(0.269 0 0)',
     ring: 'oklch(0.439 0 0)',
   },
+
+  fontSize: '16px',
+  
+  // Azuka Primary Palette
+  azuka: {
+    forest: '#1C3927',
+    sage: '#83965F',
+    cream: '#F1ECCE',
+    rose: '#BB8585',
+    teal: '#29555F',
+  },
+
+  // Azuka Extended Palette
+  azukaExtended: {
+    sageLight: '#A8A383',
+    sageLighter: '#D7CE93',
+    creamLight: '#F1ECCE',
+    roseLight: '#D9A691',
+    roseDark: '#BB8585',
+    tealLight: '#4E7B85',
+    tealLighter: '#8EB1B8',
+    tealDark: '#1B3A42',
+    forestLight: '#3E5C41',
+    forestLighter: '#7B937D',
+    forestDark: '#0E1F15',
+  },
+
+  // Phase Colors
+  phase: {
+    menstrual: '#BB8585',
+    ovulatory: '#29555F',
+    recovery: '#83965F',
+  },
+  
+  radius: '1rem',
+};
+
+export const Colors = {
+  light: lightTheme,
+  dark: darkTheme,
 };
 
 export type Theme = typeof lightTheme;

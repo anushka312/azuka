@@ -2,11 +2,13 @@ import WeeklyPlan from "../src/models/WeeklyPlan.js";
 import User from "../src/models/User.js";
 import BodyState from "../src/models/BodyState.js";
 import Calendar from "../src/models/CalendarEvent.js";
+import SymptomLog from "../src/models/Symptoms.js";
 import workoutAgent, { generateWeekPlan } from "../src/agents/workoutAgent.js";
 import metabolicAgent, { calculateWeeklyEnvelope } from "../src/agents/metabolicAgent.js";
 import cravingPatternAgent from "../src/agents/cravingPatternAgent.js";
 import foodVisionAgent from "../src/agents/foodVisionAgent.js";
 import cycleRecipeAgent from "../src/agents/cycleRecipeAgent.js";
+import dailyBriefingAgent from "../src/agents/dailyBriefingAgent.js";
 import intelligenceLoop from "../src/services/intelligenceLoop.js";
 
 // --- Helper to get mock user if auth is missing for demo ---
@@ -31,7 +33,16 @@ const getUser = async (req) => {
     }
 
     // In production, req.user.id from middleware
-    // For now, return a mock or find the first user
+    if (req.userId) {
+        try {
+            const user = await User.findById(req.userId);
+            if (user) return user;
+        } catch (e) {
+            console.warn("User lookup by ID failed:", e.message);
+        }
+    }
+
+    // Fallback: Return a mock or find the first user
     try {
         let user = await User.findOne();
         if (!user) {
@@ -62,6 +73,22 @@ const calculatePhase = (day, length = 28) => {
     if (day <= 13) return "Follicular";
     if (day <= 17) return "Ovulatory";
     return "Luteal";
+};
+
+// --- Helper to convert percentages to grams ---
+const calculateMacros = (nutrition) => {
+    if (!nutrition || !nutrition.macros || !nutrition.calories) {
+        return { protein: 120, carbs: 180, fats: 60 }; // Fallback
+    }
+    
+    const avgCals = (nutrition.calories.min + nutrition.calories.max) / 2;
+    const { protein_pct, carb_pct, fat_pct } = nutrition.macros;
+    
+    return {
+        protein: Math.round((avgCals * (protein_pct / 100)) / 4),
+        carbs: Math.round((avgCals * (carb_pct / 100)) / 4),
+        fats: Math.round((avgCals * (fat_pct / 100)) / 9)
+    };
 };
 
 /**
@@ -228,24 +255,108 @@ export const trackCalories = async (req, res) => {
  */
 export const analyzeCravings = async (req, res) => {
     try {
-        const user = await getUser(req);
+        const user = await getUser(req.userId); // Use req.userId
         const { time, emotion, craving } = req.body;
         
-        // Mock historical logs for now
-        const historicalLogs = [
-            { cycle_day: 26, symptom: "Sugar Craving", stress: 0.8 },
-            { cycle_day: 27, symptom: "Sugar Craving", stress: 0.9 }
-        ];
+        // Fetch Real Historical Logs (Last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const logs = await SymptomLog.find({
+            userId: user._id,
+            date: { $gte: thirtyDaysAgo }
+        }).sort({ date: 1 });
 
-        // Mock current tier1 state (usually fetched from BodyState)
+        const historicalLogs = logs.map(log => ({
+            cycle_day: calculatePhase(log.date.getDate()), // Approximate logic, ideally calculate from user cycle start
+            symptom: log.symptoms.join(", ") + (log.cravings ? ", " + log.cravings.join(", ") : ""),
+            stress: 0.5 // Default if not in SymptomLog, usually in BodyState
+        }));
+        
+        // Append current request as latest log
+        historicalLogs.push({
+            cycle_day: user.cycleDay,
+            symptom: craving,
+            stress: emotion === 'Stressed' ? 0.9 : 0.5
+        });
+
+        // Get Real Tier 1 State
         const phase = calculatePhase(user.cycleDay, user.cycleLength);
+        const todayBody = await BodyState.findOne({ userId: user._id, date: new Date().setHours(0,0,0,0) });
+        
         const tier1State = {
             cycle: { day: user.cycleDay, phase: phase }, 
-            stress: { score: 0.8 }
+            stress: { score: todayBody?.stress_level ? todayBody.stress_level / 100 : 0.5 }
         };
 
         const analysis = await cravingPatternAgent(historicalLogs, tier1State);
         res.json({ success: true, analysis });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * /symptoms/analyze - Immediate Feedback Agent
+ */
+export const analyzeSymptoms = async (req, res) => {
+    try {
+        const user = await getUser(req);
+        const { symptoms } = req.body; // Array of strings
+        
+        if (!symptoms || symptoms.length === 0) {
+            return res.json({ success: true, analysis: null });
+        }
+
+        // We use the Daily Briefing Agent logic but scoped to just this interaction
+        // Or we can create a lightweight prompt here. 
+        // Let's use DailyBriefingAgent but force "keep" plan action to just get insights.
+        
+        const logs = [{
+            date: new Date(),
+            symptoms: symptoms
+        }];
+        
+        // Mock current plan just to satisfy agent signature
+        const currentPlan = { days: [] };
+        const cycleState = {
+            phase: calculatePhase(user.cycleDay, user.cycleLength),
+            day: user.cycleDay
+        };
+
+        // Timeout Wrapper (8 seconds)
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Agent Timeout")), 8000)
+        );
+
+        let analysis;
+        try {
+            analysis = await Promise.race([
+                dailyBriefingAgent(user, logs, currentPlan, cycleState, false),
+                timeoutPromise
+            ]);
+        } catch (e) {
+            console.error("Symptoms Agent Timeout/Error:", e.message);
+            // Fallback
+            analysis = {
+                metabolic: { fuel_risk: 0.5, rationale: "Monitoring symptoms (Agent unavailable)." },
+                psychology: { motivation_state: "stable", rationale: "Listen to your body." },
+                today_focus: { nutrition_tip: "Hydrate and rest if needed." }
+            };
+        }
+        
+        // Ensure we always return something useful, even if the agent is conservative
+        const result = {
+            metabolic: analysis.metabolic || { fuel_risk: 0.5, rationale: "Monitoring symptoms." },
+            psychology: analysis.psychology || { motivation_state: "stable", rationale: "Keep tracking." },
+            recommendation: analysis.today_focus || { nutrition_tip: "Stay hydrated and rest." }
+        };
+
+        res.json({ 
+            success: true, 
+            analysis: result
+        });
+
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -310,7 +421,7 @@ export const generateRecipe = async (req, res) => {
         };
 
         const recipe = await cycleRecipeAgent(tier1Data, tier2Data);
-        res.json({ success: true, recipe });
+        res.json({ success: true, recipe, phase });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

@@ -1,11 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
 } from 'react-native';
 // FIX 1: Added SafeAreaView to imports
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,9 +23,16 @@ import {
   TrendingUp 
 } from 'lucide-react-native';
 import { GlassCard } from '../../components/GlassCard'; // Ensure path is correct
-import { StarIcon, PetalIcon, CrescentIcon } from '../../components/icons/AzukaIcons';
+import { 
+  StarIcon, 
+  PetalIcon, 
+  CrescentIcon 
+} from '../../components/icons/AzukaIcons';
+import { API_URL } from '@/constants/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { toast } from 'sonner-native';
 
-const { width } = Dimensions.get('window');
+// const { width } = Dimensions.get('window');
 
 interface ForecastScreenProps {
   onBack: () => void;
@@ -34,15 +40,47 @@ interface ForecastScreenProps {
 
 export default function ForecastScreen({ onBack }: ForecastScreenProps) {
   const insets = useSafeAreaInsets();
-  const forecast = [
-    { day: 'Today', date: 'Feb 4', phase: 'Luteal', icon: PetalIcon, color: '#BB8585', energy: 68, workout: 'Light Yoga', workoutDuration: 45, calories: 2000, carbs: 'High', risks: ['Ligament laxity'] },
-    { day: 'Wed', date: 'Feb 5', phase: 'Luteal', icon: PetalIcon, color: '#BB8585', energy: 65, workout: 'Walking', workoutDuration: 30, calories: 1950, carbs: 'High', risks: [] },
-    { day: 'Thu', date: 'Feb 6', phase: 'Menstrual', icon: CrescentIcon, color: '#BB8585', energy: 60, workout: 'Rest Day', workoutDuration: 0, calories: 1900, carbs: 'Medium', risks: ['High inflammation'] },
-    { day: 'Fri', date: 'Feb 7', phase: 'Menstrual', icon: PetalIcon, color: '#BB8585', energy: 62, workout: 'Gentle Stretch', workoutDuration: 20, calories: 1950, carbs: 'Medium', risks: [] },
-    { day: 'Sat', date: 'Feb 8', phase: 'Follicular', icon: CrescentIcon, color: '#83965F', energy: 70, workout: 'Moderate Cardio', workoutDuration: 40, calories: 2100, carbs: 'Medium', risks: [] },
-    { day: 'Sun', date: 'Feb 9', phase: 'Follicular', icon: StarIcon, color: '#83965F', energy: 75, workout: 'Strength Training', workoutDuration: 50, calories: 2200, carbs: 'Medium', risks: [] },
-    { day: 'Mon', date: 'Feb 10', phase: 'Follicular', icon: StarIcon, color: '#29555F', energy: 80, workout: 'HIIT', workoutDuration: 45, calories: 2300, carbs: 'Low', risks: [] },
-  ];
+  const [forecast, setForecast] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchForecast();
+  }, []);
+
+  const fetchForecast = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+      const res = await fetch(`${API_URL}/forecast`, { headers });
+      const json = await res.json();
+      if (json.success) {
+        setForecast(json.forecast);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to load forecast");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper to get icon component
+  const getPhaseIcon = (phase: string) => {
+      if (phase === 'Menstrual') return CrescentIcon;
+      if (phase === 'Follicular' || phase === 'Ovulatory') return StarIcon;
+      return PetalIcon;
+  };
+
+  if (loading) {
+      return (
+          <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+              <Activity size={32} color="#29555F" />
+          </View>
+      );
+  }
 
   return (
     // FIX 2: Correctly applied SafeAreaView
@@ -76,7 +114,7 @@ export default function ForecastScreen({ onBack }: ForecastScreenProps) {
         {/* Daily Breakdown */}
         <View style={styles.listContainer}>
           {forecast.map((day, i) => (
-            <ForecastItem key={i} day={day} index={i} />
+            <ForecastItem key={i} day={day} index={i} icon={getPhaseIcon(day.phase)} />
           ))}
         </View>
       </ScrollView>
@@ -90,7 +128,7 @@ function TrendBar({ day, index }: { day: any; index: number }) {
 
   useEffect(() => {
     heightValue.value = withDelay(index * 100, withTiming(day.energy, { duration: 800 }));
-  }, []);
+  }, [day.energy, heightValue, index]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     height: `${heightValue.value}%`,
@@ -115,8 +153,7 @@ function TrendBar({ day, index }: { day: any; index: number }) {
   );
 }
 
-function ForecastItem({ day, index }: { day: any; index: number }) {
-  const Icon = day.icon;
+function ForecastItem({ day, index, icon: Icon }: { day: any; index: number; icon: any }) {
   return (
     // FIX 4: Added animation to the Daily cards
     <Animated.View entering={FadeInUp.delay(index * 150)}>

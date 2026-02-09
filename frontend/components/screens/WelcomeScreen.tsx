@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -60,7 +60,7 @@ export function WelcomeScreen({ onGetStarted }: WelcomeScreenProps) {
         }),
       ]),
     ]).start();
-  }, []);
+  }, [contentFade, contentSlide, logoScale, logoTranslateY]);
 
   return (
     <SafeAreaView style={styles.container}>

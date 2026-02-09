@@ -7,17 +7,22 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
-  Dimensions,
+  // Dimensions,
   Platform,
+  Alert,
 } from 'react-native';
-import { ChevronRight, ChevronLeft, Plus, Minus, Check, Calendar, Clock, Target, Award, User, Hash } from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, Plus, Minus, Check, Calendar, Clock, Target, Award, User, Hash, AlertTriangle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
+import { FadeInDown } from 'react-native-reanimated';
 import { GlassCard } from '../GlassCard';
 import { lightTheme as theme } from '../../constants/theme';
+import { auth } from '../../constants/firebaseConfig';
 
-const { width, height } = Dimensions.get('window');
+import { API_URL } from '../../constants/config';
+
+// const { width, height } = Dimensions.get('window');
 
 const STEP_COLORS = [
   theme.azuka.rose,   
@@ -25,11 +30,12 @@ const STEP_COLORS = [
   theme.azuka.sage,   
   theme.azukaExtended.roseLight, 
   theme.azuka.forest, 
+  theme.azukaExtended.sageLighter, // Body Stats (Gold-ish)
   theme.azukaExtended.tealLight, 
 ];
 
 export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
-  // Resetting logic to use sequential 0-5 mapping
+  // Resetting logic to use sequential 0-6 mapping
   const [step, setStep] = useState(0);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -42,10 +48,13 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
   const [data, setData] = useState({
     name: '',
     age: '',
+    height: '',
+    weight: '',
     cycleLength: '28',
     lastPeriod: new Date(),
     goals: [] as string[],
     trainingLevel: '',
+    targetWeight: '',
   });
 
   useEffect(() => {
@@ -58,19 +67,39 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
         Animated.timing(bgAnim, { toValue: step, duration: 800, useNativeDriver: true })
       ]).start();
     }
-  }, [step, isSuccess]);
+  }, [step, isSuccess, bgAnim, contentFade, contentScale]);
 
   const activeColor = STEP_COLORS[step] || theme.azuka.forest;
 
   const isStepValid = () => {
-    // Sequential validation for steps 0 through 5
+    // Sequential validation for steps 0 through 6
     switch(step) {
       case 0: return data.name.trim().length > 0 && data.age.trim().length > 0;
       case 1: return parseInt(data.cycleLength) >= 21;
       case 2: return data.lastPeriod <= new Date();
       case 3: return data.goals.length > 0;
       case 4: return data.trainingLevel !== '';
-      case 5: return true; // Summary step is always valid
+      case 5: {
+        const hasHeightWeight = data.height.trim().length > 0 && data.weight.trim().length > 0;
+        if (!hasHeightWeight) return false;
+        
+        // If weight loss goal is selected, ensure target weight is provided IF in healthy range
+        if (data.goals.includes('Weight Loss') || data.goals.includes('Muscle Tone')) {
+             const bmi = parseFloat(calculateBMI(data.height, data.weight));
+             const isHealthy = bmi >= 18.5 && bmi <= 24.9;
+             if (isHealthy) {
+                 return data.targetWeight.trim().length > 0;
+             }
+             // If not healthy, we block proceeding with weight loss goal? 
+             // Or we just allow them to proceed but without target weight?
+             // Per user request "only for those whos bmi is within healthy range... helps them to lose weight"
+             // I will assume we should allow them to proceed, but we won't capture target weight or set it to 0.
+             // But the UI shows a warning. Let's allow them to proceed.
+             return true; 
+        }
+        return true;
+      }
+      case 6: return true; // Summary step is always valid
       default: return true;
     }
   };
@@ -81,18 +110,67 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!isStepValid()) return;
     
-    if (step === 5) { // Final step is now 5
+    if (step === 6) { // Final step is now 6
       triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-      setIsSuccess(true);
-      Animated.sequence([
-        Animated.timing(contentFade, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.spring(successScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true })
-      ]).start(() => {
-        setTimeout(onComplete, 1200);
-      });
+      
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+            Alert.alert("Error", "No authenticated user found. Please sign in again.");
+            return;
+        }
+
+        // Prepare payload for backend
+        const payload = {
+          name: data.name,
+          email: currentUser.email,
+          firebaseUid: currentUser.uid,
+          age: parseInt(data.age),
+          height: parseFloat(data.height),
+          weight: parseFloat(data.weight),
+          cycleLength: parseInt(data.cycleLength),
+          cycleDay: 1, // Default or calculated
+          lastPeriod: data.lastPeriod,
+          goals: {
+             primary: data.goals[0] || "Health",
+             secondary: data.goals[1] || "",
+             target_weight: data.targetWeight ? parseFloat(data.targetWeight) : 0
+          },
+          activityLevel: data.trainingLevel, 
+        };
+
+        const token = await currentUser.getIdToken();
+        const response = await fetch(`${API_URL}/auth/signup`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || "Signup failed");
+        }
+        
+        setIsSuccess(true);
+        Animated.sequence([
+          Animated.timing(contentFade, { toValue: 0, duration: 200, useNativeDriver: true }),
+          Animated.spring(successScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true })
+        ]).start(() => {
+          setTimeout(onComplete, 1200);
+        });
+
+      } catch (error: any) {
+        console.error("Signup Failed", error);
+        Alert.alert("Signup Failed", error.message);
+      }
+
     } else {
       triggerHaptic();
       setStep(step + 1);
@@ -104,16 +182,35 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
     if (step > 0) setStep(step - 1);
   };
 
+  // Helper to calculate BMI
+  const calculateBMI = (h: string, w: string) => {
+    const heightM = parseFloat(h) / 100;
+    const weightKg = parseFloat(w);
+    if (!heightM || !weightKg) return 0;
+    return (weightKg / (heightM * heightM)).toFixed(1);
+  };
+
+  const getBMICategory = (bmi: number) => {
+    if (bmi < 18.5) return { label: 'Underweight', color: theme.azuka.sage };
+    if (bmi >= 18.5 && bmi <= 24.9) return { label: 'Healthy Weight', color: theme.azuka.teal };
+    if (bmi >= 25 && bmi <= 29.9) return { label: 'Overweight', color: theme.azuka.rose };
+    return { label: 'Obese', color: theme.azuka.rose };
+  };
+
+  const currentBMI = calculateBMI(data.height, data.weight);
+  const bmiCategory = getBMICategory(parseFloat(currentBMI));
+  const isHealthyRange = parseFloat(currentBMI) >= 18.5 && parseFloat(currentBMI) <= 24.9;
+
   return (
     <SafeAreaView style={styles.container}>
-      <Animated.View style={[styles.blob, styles.blob1, { backgroundColor: activeColor, transform: [{ translateY: bgAnim.interpolate({ inputRange: [0, 5], outputRange: [0, 120] }) }] }]} />
-      <Animated.View style={[styles.blob, styles.blob2, { backgroundColor: STEP_COLORS[(step + 1) % 6], transform: [{ translateX: bgAnim.interpolate({ inputRange: [0, 5], outputRange: [0, -60] }) }] }]} />
+      <Animated.View style={[styles.blob, styles.blob1, { backgroundColor: activeColor, transform: [{ translateY: bgAnim.interpolate({ inputRange: [0, 6], outputRange: [0, 120] }) }] }]} />
+      <Animated.View style={[styles.blob, styles.blob2, { backgroundColor: STEP_COLORS[(step + 1) % 7], transform: [{ translateX: bgAnim.interpolate({ inputRange: [0, 6], outputRange: [0, -60] }) }] }]} />
 
       {!isSuccess ? (
         <>
           <View style={styles.header}>
             <View style={styles.stepIndicator}>
-              {[0, 1, 2, 3, 4, 5].map((i) => (
+              {[0, 1, 2, 3, 4, 5, 6].map((i) => (
                 <View key={i} style={[styles.dot, { backgroundColor: i === step ? activeColor : 'rgba(0,0,0,0.05)', width: i === step ? 16 : 6 }]} />
               ))}
             </View>
@@ -236,9 +333,9 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
                     <View style={styles.stepContainer}>
                       <View style={styles.headerGap}>
                         <Text style={[styles.title, { color: activeColor }]}>Experience</Text>
-                        <Text style={styles.subtitle}>Your current fitness level dictates the volume and intensity of Azuka's generators.</Text>
+                        <Text style={styles.subtitle}>Your current fitness level dictates the volume and intensity of Azuka&apos;s generators.</Text>
                       </View>
-                      {['Beginner', 'Intermediate', 'Advanced'].map((level) => (
+                      {['Sedentary', 'Lightly Active', 'Moderately Active', 'Very Active'].map((level) => (
                         <TouchableOpacity key={level} onPress={() => { triggerHaptic(); setData({...data, trainingLevel: level}); }} 
                           style={[styles.levelRow, data.trainingLevel === level && { borderColor: activeColor, backgroundColor: theme.foreground}]}>
                           <Text style={[styles.levelText, { color: data.trainingLevel === level ? '#fff' : theme.azuka.forest }]}>{level}</Text>
@@ -251,6 +348,85 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
                   {step === 5 && (
                     <View style={styles.stepContainer}>
                       <View style={styles.headerGap}>
+                        <Text style={[styles.title, { color: activeColor }]}>Body Stats</Text>
+                        <Text style={styles.subtitle}>We need your height and weight to calculate your metabolic baseline accurately.</Text>
+                      </View>
+                      <View style={styles.enhancedInputCard}>
+                        <View style={styles.labelRow}>
+                          <Text style={styles.inputLabel}>HEIGHT (CM)</Text>
+                          <Hash size={14} color={activeColor} />
+                        </View>
+                        <TextInput 
+                          style={styles.input} 
+                          placeholder="e.g. 165" 
+                          keyboardType="numeric" 
+                          value={data.height} 
+                          onChangeText={t => setData({...data, height: t})} 
+                        />
+                        <View style={[styles.labelRow, { marginTop: 20 }]}>
+                          <Text style={styles.inputLabel}>WEIGHT (KG)</Text>
+                          <Hash size={14} color={activeColor} />
+                        </View>
+                        <TextInput 
+                          style={styles.input} 
+                          placeholder="e.g. 60" 
+                          keyboardType="numeric" 
+                          value={data.weight} 
+                          onChangeText={t => setData({...data, weight: t})} 
+                        />
+
+                        {/* BMI Feedback */}
+                        {data.height && data.weight && (
+                            <View style={{ marginTop: 15, padding: 10, backgroundColor: theme.inputBackground, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <View>
+                                    <Text style={{ fontSize: 12, color: theme.azuka.sage, fontFamily: 'FunnelDisplay-Regular' }}>BMI</Text>
+                                    <Text style={{ fontSize: 18, color: theme.azuka.forest, fontFamily: 'FunnelDisplay-Medium' }}>{currentBMI}</Text>
+                                </View>
+                                <View style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: bmiCategory.color + '20', borderRadius: 20 }}>
+                                    <Text style={{ fontSize: 12, color: bmiCategory.color, fontFamily: 'FunnelDisplay-Medium' }}>{bmiCategory.label}</Text>
+                                </View>
+                            </View>
+                        )}
+                        
+                        {(data.goals.includes('Weight Loss') || data.goals.includes('Muscle Tone')) && (
+                          <>
+                            {isHealthyRange ? (
+                                <Animated.View entering={FadeInDown.delay(200)}>
+                                    <View style={[styles.labelRow, { marginTop: 20 }]}>
+                                      <Text style={styles.inputLabel}>IDEAL WEIGHT (KG)</Text>
+                                      <Target size={14} color={activeColor} />
+                                    </View>
+                                    <TextInput 
+                                      style={styles.input} 
+                                      placeholder="e.g. 55" 
+                                      keyboardType="numeric" 
+                                      value={data.targetWeight} 
+                                      onChangeText={t => setData({...data, targetWeight: t})} 
+                                    />
+                                    <Text style={{ marginTop: 8, fontSize: 12, color: theme.mutedForeground, fontFamily: 'FunnelDisplay-Regular' }}>
+                                      Since you are in a healthy range, we'll focus on body recomposition and gentle calorie adjustments.
+                                    </Text>
+                                </Animated.View>
+                            ) : (
+                                <View style={{ marginTop: 20, padding: 12, backgroundColor: theme.azuka.rose + '10', borderRadius: 12 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                        <AlertTriangle size={16} color={theme.azuka.rose} style={{ marginRight: 8 }} />
+                                        <Text style={{ fontSize: 14, color: theme.azuka.rose, fontFamily: 'FunnelDisplay-Medium' }}>Recommendation</Text>
+                                    </View>
+                                    <Text style={{ fontSize: 13, color: theme.azuka.forest, lineHeight: 18 }}>
+                                        For your safety, Azuka's automated weight loss plans are currently optimized for users starting within the healthy BMI range (18.5-24.9). We recommend focusing on "Energy" or "Hormones" goals first!
+                                    </Text>
+                                </View>
+                            )}
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {step === 6 && (
+                    <View style={styles.stepContainer}>
+                      <View style={styles.headerGap}>
                         <Text style={[styles.title, { color: activeColor }]}>Confirm Your Details</Text>
                         <Text style={styles.subtitle}>Review your biological profile before we generate your first day.</Text>
                       </View>
@@ -259,6 +435,7 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
                         <SummaryItem icon={<Calendar size={16} color={activeColor}/>} label="Started" value={data.lastPeriod.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})} color={activeColor}/>
                         <SummaryItem icon={<Award size={16} color={activeColor}/>} label="Level" value={data.trainingLevel || '—'} color={activeColor}/>
                         <SummaryItem icon={<Target size={16} color={activeColor}/>} label="Goals" value={`${data.goals.length} Selected`} color={activeColor}/>
+                        <SummaryItem icon={<User size={16} color={activeColor}/>} label="Stats" value={`${data.height}cm / ${data.weight}kg`} color={activeColor}/>
                       </View>
                     </View>
                   )}
@@ -278,7 +455,7 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
               disabled={!isStepValid()}
               style={[styles.primaryBtn, { backgroundColor: activeColor, opacity: isStepValid() ? 1 : 0.4 }]}
             >
-              <Text style={styles.primaryBtnText}>{step === 5 ? 'Generate System' : 'Next'}</Text>
+              <Text style={styles.primaryBtnText}>{step === 6 ? 'Generate System' : 'Next'}</Text>
               <ChevronRight size={18} color="#FFF" />
             </TouchableOpacity>
           </View>

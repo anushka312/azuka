@@ -1,44 +1,52 @@
 import { callGemini } from "../services/geminiClient.js";
 
 /**
- * Agent 7: Food Vision
- * Role: Converts meal images into macronutrient and micronutrient data.
- * Logic: Cross-references visual data with cycle-specific nutrient requirements.
+ * Agent: Food Vision
+ * Role: Nutritional Analyst
+ * Input: Image Base64
+ * Output: JSON with meal ID and macros.
  */
-export default async function foodVisionAgent(imageUri, tier1Outputs) {
-    // Note: For image analysis, you would pass the base64 or file URI to Gemini 1.5/2.0 Flash
+export default async function foodVisionAgent(imageBase64) {
     const prompt = `
-    ROLE: You are the Azuka Food Visionary (Expert in Visual Nutrition & Hormone-Specific Dietetics).
+    ROLE: You are an expert nutritionist and food analyst.
     
-    # KNOWLEDGE CONTEXT:
-    - MICRONUTRIENT FOCUS: 
-        - Menstrual: Needs Iron + Vitamin C.
-        - Follicular: Needs Zinc + Vitamin E.
-        - Ovulatory: Needs Fiber + B-Vitamins.
-        - Luteal: Needs Magnesium + Calcium.
-    - VOLUME ESTIMATION: Estimate portion sizes based on standard plate dimensions.
+    TASK: Analyze the provided food image.
+    1. Identify the meal/foods.
+    2. Estimate total calories and macros (Protein, Carbs, Fat) with high accuracy.
+    3. If unclear, provide a best guess based on visible portion size.
 
-    # INPUT DATA:
-    - Image: [User Meal Photo]
-    - Biological State: ${JSON.stringify(tier1Outputs)}
-
-    # TASK:
-    1. Identify the food items in the image.
-    2. Estimate Calories, Protein, Carbs, and Fats.
-    3. Identify if the meal contains "Cycle-Critical" nutrients for the user's current phase (${tier1Outputs.cycle.phase}).
-
-    RETURN ONLY VALID JSON:
+    OUTPUT FORMAT (JSON ONLY):
     {
-      "meal_identification": ["string"],
-      "macros": { "calories": number, "protein": number, "carbs": number, "fat": number },
-      "cycle_match_score": 0-1,
-      "missing_elements": ["string"],
-      "rationale": "Explain how this meal supports (or fails to support) the user's current hormonal phase requirements."
+        "meal_identification": ["List of main items"],
+        "macros": {
+            "calories": number,
+            "protein": number, // grams
+            "carbs": number, // grams
+            "fat": number // grams
+        },
+        "confidence": "high | medium | low"
     }
     `;
 
-    // In a real implementation, you would use the 'multimodal' capability here
-    const response = await callGemini(prompt, imageUri); 
-    
-    return JSON.parse(response.replace(/```json|```/g, ""));
+    try {
+        const response = await callGemini(prompt, imageBase64);
+        
+        // Cleaning
+        let cleanResponse = response.replace(/```json|```/g, "").trim();
+        const jsonStart = cleanResponse.indexOf('{');
+        const jsonEnd = cleanResponse.lastIndexOf('}');
+        if (jsonStart !== -1 && jsonEnd !== -1) {
+            cleanResponse = cleanResponse.substring(jsonStart, jsonEnd + 1);
+        }
+
+        return JSON.parse(cleanResponse);
+    } catch (error) {
+        console.error("Food Vision Agent Error:", error);
+        // Fallback
+        return {
+            meal_identification: ["Unknown Food"],
+            macros: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+            confidence: "low"
+        };
+    }
 }

@@ -1,19 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, StatusBar, Dimensions, Text as RNText } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { StyleSheet, View, StatusBar, Text as RNText, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Font from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
 import { toast } from 'sonner-native';
-
-// Fonts
-const fonts = {
-  'FunnelDisplay-Light': require('../assets/fonts/FunnelDisplay-Light.ttf'),
-  'FunnelDisplay-Regular': require('../assets/fonts/FunnelDisplay-Regular.ttf'),
-  'FunnelDisplay-Medium': require('../assets/fonts/FunnelDisplay-Medium.ttf'),
-  'FunnelDisplay-SemiBold': require('../assets/fonts/FunnelDisplay-SemiBold.ttf'),
-  'FunnelDisplay-Bold': require('../assets/fonts/FunnelDisplay-Bold.ttf'),
-  'FunnelDisplay-ExtraBold': require('../assets/fonts/FunnelDisplay-ExtraBold.ttf')
-};
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { auth } from '../constants/firebaseConfig';
+import { signOut } from 'firebase/auth';
+import { API_URL } from '../constants/config';
 
 // Screen Components
 import { AuthScreen } from '../components/screens/AuthScreen';
@@ -30,6 +22,17 @@ import { ProfileSidebar } from '../components/ProfileSidebar';
 // UI Components
 import { BottomNav } from '../components/BottomNav';
 import { QuickLogModal } from '../components/QuickLogModal';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
+// Fonts
+// const fonts = {
+//   'FunnelDisplay-Light': require('../assets/fonts/FunnelDisplay-Light.ttf'),
+//   'FunnelDisplay-Regular': require('../assets/fonts/FunnelDisplay-Regular.ttf'),
+//   'FunnelDisplay-Medium': require('../assets/fonts/FunnelDisplay-Medium.ttf'),
+//   'FunnelDisplay-SemiBold': require('../assets/fonts/FunnelDisplay-SemiBold.ttf'),
+//   'FunnelDisplay-Bold': require('../assets/fonts/FunnelDisplay-Bold.ttf'),
+//   'FunnelDisplay-ExtraBold': require('../assets/fonts/FunnelDisplay-ExtraBold.ttf')
+// };
 
 // Types
 type Screen =
@@ -44,7 +47,7 @@ type Screen =
   | 'forecast';
 type Tab = 'home' | 'workout' | 'food' | 'mindset';
 
-const { width, height } = Dimensions.get('window');
+// const { width, height } = Dimensions.get('window');
 
 // Initial User Data
 const initialUserData = {
@@ -59,7 +62,8 @@ const initialUserData = {
   goals: {
     primary: "Balance Hormones",
     secondary: "Increase Energy",
-    target_weight: "55"
+    target_weight: "55",
+    start_weight: "60"
   },
 };
 
@@ -71,13 +75,85 @@ export default function App() {
   
   // User Data State (Lifted)
   const [userData, setUserData] = useState(initialUserData);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- Initial Auth Check ---
+  const checkUserSession = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        // Fetch fresh profile with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+        try {
+          const response = await fetch(`${API_URL}/auth/profile`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: controller.signal
+          });
+          
+          const json = await response.json();
+          if (json.success) {
+            setUserData(json.result);
+            
+            // Fix: Check onboarding status
+            if (!json.result.isOnboarded) {
+                setCurrentScreen('onboarding');
+            } else {
+                if (currentScreen !== 'onboarding') { // Don't interrupt if already there
+                  setCurrentScreen('home'); 
+                }
+            }
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+    } catch (error) {
+      console.error("Session Check Failed", error);
+    } finally {
+      // Small delay to prevent flash
+      setTimeout(() => setIsLoading(false), 500);
+    }
+  }, []); // Remove currentScreen dependency to prevent loops
+
+  useEffect(() => {
+    checkUserSession();
+  }, [checkUserSession]);
 
   // --- Logic Handlers ---
   const handleGetStarted = () => setCurrentScreen('auth');
-  const handleAuthComplete = () => setCurrentScreen('onboarding');
-  const handleOnboardingComplete = () => setCurrentScreen('home');
+  const handleAuthComplete = () => {
+     checkUserSession(); // Refresh profile after login
+     setCurrentScreen('home'); // Login -> Home
+  };
+  const handleSignupComplete = () => {
+     checkUserSession(); // Refresh profile after signup (to get user data for onboarding if needed)
+     setCurrentScreen('onboarding'); // Signup -> Onboarding
+  };
+  const handleOnboardingComplete = () => {
+    checkUserSession(); 
+    setCurrentScreen('home');
+  };
+  const handleLogout = async () => {
+    try {
+      console.log("Initiating Logout...");
+      await signOut(auth);
+      console.log("Firebase Signout Complete");
+    } catch (e) {
+      console.log("Firebase Signout Error (Non-fatal)", e);
+    }
+    await AsyncStorage.removeItem('userToken');
+    console.log("User Token Removed");
+    
+    setUserData(initialUserData);
+    setIsSidebarOpen(false);
+    setCurrentScreen('welcome');
+    toast.success('Logged Out');
+  };
   const handleOpenCalendar = () => setCurrentScreen('calendar');
-  const handleOpenForecast = () => setCurrentScreen('forecast');
+  // const handleOpenForecast = () => setCurrentScreen('forecast');
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
     setCurrentScreen(tab);
@@ -86,13 +162,67 @@ export default function App() {
     setCurrentScreen('home');
     setActiveTab('home');
   };
-  const handleQuickLogSelect = (type: 'symptom' | 'workout' | 'food' | 'mood' | 'body') => {
-    if (type === 'body') {
-       toast.success('Body Stats Logged', { description: 'Weight and Height recorded for today.' });
-    } else {
-       toast.success(`Logged ${type}`, { description: 'Added to your daily log.' });
-    }
+  const handleQuickLogSelect = async (type: 'symptom' | 'workout' | 'food' | 'mood' | 'body') => {
     setShowQuickLog(false);
+    
+    // Optimistic UI updates could go here
+    const today = new Date().toISOString();
+    let apiType = type;
+    let apiData = {};
+
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+
+      switch(type) {
+        case 'workout':
+          // For quick log, we assume a generic manual workout if not detailed
+          // In a real app, this might open a detailed modal first
+          apiData = { workoutType: 'Quick Workout', duration: 30, notes: 'Quick logged' };
+          toast.success("Log Workout", { description: "Logging quick workout..." });
+          break;
+        case 'food':
+          toast.success("Log Nutrition", { description: "Opening food scanner..." });
+          handleTabChange('food');
+          return; // Navigate only
+        case 'mood':
+          apiData = { mood: 85, moodLabel: 'Good', note: 'Quick check-in' }; // Default for quick button
+          toast.success("Mindset Check-in", { description: "Logged 'Good' mood." });
+          break;
+        case 'symptom':
+          // Navigate to calendar for detailed symptom logging
+          setCurrentScreen('calendar');
+          toast.info("Select a day to log symptoms");
+          return;
+        case 'body':
+          setIsSidebarOpen(true);
+          toast.info("Update your metrics in Profile");
+          return;
+      }
+
+      // Perform API Call for direct logs (workout, mood)
+      if (['workout', 'mood'].includes(type)) {
+         const response = await fetch(`${API_URL}/calendar/log`, {
+           method: 'POST',
+           headers: headers,
+           body: JSON.stringify({
+             date: today,
+             type: apiType,
+             data: apiData
+           })
+         });
+         
+         const json = await response.json();
+         if (!json.success) throw new Error(json.message);
+      }
+
+    } catch (error) {
+      console.error("Quick Log Error", error);
+      toast.error("Failed to log", { description: "Please try again." });
+    }
   };
 
   // --- Screen Switcher ---
@@ -101,7 +231,7 @@ export default function App() {
       case 'welcome':
         return <WelcomeScreen onGetStarted={handleGetStarted} />;
       case 'auth':
-        return <AuthScreen onLogin={handleAuthComplete} />;
+        return <AuthScreen onLogin={handleAuthComplete} onSignup={handleSignupComplete} />;
       case 'onboarding':
         return <OnboardingScreen onComplete={handleOnboardingComplete} />;
       case 'home':
@@ -137,39 +267,51 @@ export default function App() {
 
   const hideNav = ['welcome', 'auth', 'onboarding', 'calendar', 'forecast'].includes(currentScreen);
 
+  if (isLoading) {
+    return (
+      <View style={[styles.outerContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1ECCE' }]}>
+        <ActivityIndicator size="large" color="#1C3927" />
+        <RNText style={{ marginTop: 20, fontFamily: 'FunnelDisplay-Medium', color: '#1C3927' }}>Loading Azuka...</RNText>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.outerContainer}>
-      <StatusBar barStyle="dark-content" />
-      
-      {/* Background Gradient using your theme colors */}
-      <LinearGradient 
-        colors={['#F1ECCE', '#F1ECCE']} 
-        style={StyleSheet.absoluteFill} 
-      />
-
-      <View style={styles.screenContainer}>{renderScreen()}</View>
-
-      {!hideNav && (
-        <BottomNav
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          onQuickLog={() => setShowQuickLog(true)}
+    <ErrorBoundary>
+      <View style={styles.outerContainer}>
+        <StatusBar barStyle="dark-content" />
+        
+        {/* Background Gradient using your theme colors */}
+        <LinearGradient 
+          colors={['#F1ECCE', '#F1ECCE']} 
+          style={StyleSheet.absoluteFill} 
         />
-      )}
 
-      <QuickLogModal
-        isOpen={showQuickLog}
-        onClose={() => setShowQuickLog(false)}
-        onSelectType={handleQuickLogSelect}
-      />
+        <View style={styles.screenContainer}>{renderScreen()}</View>
 
-      <ProfileSidebar
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        userData={userData}
-        onUpdateUserData={setUserData}
-      />
-    </View>
+        {!hideNav && (
+          <BottomNav
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            onQuickLog={() => setShowQuickLog(true)}
+          />
+        )}
+
+        <QuickLogModal
+          isOpen={showQuickLog}
+          onClose={() => setShowQuickLog(false)}
+          onSelectType={handleQuickLogSelect}
+        />
+
+        <ProfileSidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          userData={userData}
+          onUpdateUserData={setUserData}
+          onLogout={handleLogout}
+        />
+      </View>
+    </ErrorBoundary>
   );
 }
 

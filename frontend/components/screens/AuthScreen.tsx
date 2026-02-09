@@ -5,39 +5,96 @@ import {
   Text, 
   TextInput, 
   TouchableOpacity, 
-  Dimensions, 
   KeyboardAvoidingView, 
   Platform, 
   ActivityIndicator,
-  Image 
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightTheme as theme } from '../../constants/theme';
 import { PetalIcon } from '../icons/AzukaIcons';
 import { GlassCard } from '../GlassCard';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { ArrowRight, Mail, Lock } from 'lucide-react-native';
-import { Theme } from '../../constants/theme';
+import { auth } from '../../constants/firebaseConfig';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { API_URL } from '../../constants/config';
 
-const { width } = Dimensions.get('window');
+// const { width } = Dimensions.get('window');
 
 interface AuthScreenProps {
   onLogin: () => void;
+  onSignup: () => void;
 }
 
-export function AuthScreen({ onLogin }: AuthScreenProps) {
+export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleAuth = () => {
+  const handleAuth = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password.');
+      return;
+    }
+
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      if (isLogin) {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const token = await userCredential.user.getIdToken();
+        await AsyncStorage.setItem('userToken', token);
+        // On success, Firebase updates auth.currentUser automatically
+        onLogin();
+      } else {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const token = await userCredential.user.getIdToken();
+        await AsyncStorage.setItem('userToken', token);
+        
+        // Sync with backend
+        try {
+          // IMPORTANT: We use the token to authenticate with our backend
+          const syncRes = await fetch(`${API_URL}/auth/signup`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              email: userCredential.user.email,
+              firebaseUid: userCredential.user.uid,
+              name: email.split('@')[0]
+            })
+          });
+
+          const syncJson = await syncRes.json();
+          // console.log("Backend Signup Sync:", syncJson);
+          
+          if (!syncRes.ok) {
+             console.error("Backend Sync Failed", syncJson);
+          }
+        } catch (syncErr) {
+           console.error("Backend Connection Error during Signup", syncErr);
+           // Don't block the user if backend sync fails (we can retry or they can fix in onboarding)
+        }
+        // -------------------------
+
+        // On success, we navigate to onboarding
+        onSignup();
+      }
+    } catch (error: any) {
+      console.error("Auth Error", error);
+      let msg = error.message;
+      if (error.code === 'auth/email-already-in-use') msg = 'That email address is already in use!';
+      if (error.code === 'auth/invalid-email') msg = 'That email address is invalid!';
+      if (error.code === 'auth/user-not-found') msg = 'User not found. Please sign up.';
+      if (error.code === 'auth/wrong-password') msg = 'Invalid password.';
+      Alert.alert('Authentication Failed', msg);
+    } finally {
       setLoading(false);
-      onLogin();
-    }, 1500);
+    }
   };
 
   const handleGoogleLogin = () => {
@@ -54,16 +111,19 @@ export function AuthScreen({ onLogin }: AuthScreenProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <Animated.View entering={FadeInUp.duration(800).springify()} style={styles.header}>
-          <PetalIcon size={60} color={theme.azuka.rose} />
-          <Text style={styles.title}>azuka</Text>
+        <Animated.View entering={FadeInUp.duration(800).springify()}>
+          <View style={styles.header}>
+            <PetalIcon size={60} color={theme.azuka.rose} />
+            <Text style={styles.title}>azuka</Text>
+          </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(800).delay(200).springify()} style={styles.formContainer}>
-          <GlassCard style={styles.card}>
-            <Text style={styles.welcomeText}>
-              {isLogin ? 'Welcome Back' : 'Create Account'}
-            </Text>
+        <Animated.View entering={FadeInDown.duration(800).delay(200).springify()}>
+          <View style={styles.formContainer}>
+            <GlassCard style={styles.card}>
+              <Text style={styles.welcomeText}>
+                {isLogin ? 'Welcome Back' : 'Create Account'}
+              </Text>
             <Text style={styles.subtitle}>
               {isLogin ? 'Sign in to continue your cycle syncing journey' : 'Start your biological intelligence journey today'}
             </Text>
@@ -136,6 +196,7 @@ export function AuthScreen({ onLogin }: AuthScreenProps) {
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>

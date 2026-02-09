@@ -21,6 +21,21 @@ const app = express();
 app.use(cors());
 app.use(express.json()); // Essential for reading your AI logs
 
+// LOGGING MIDDLEWARE
+app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.path}`);
+    next();
+});
+
+// Global Error Handler for JSON parsing errors
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('Bad JSON:', err.message);
+    return res.status(400).json({ success: false, message: 'Invalid JSON payload' });
+  }
+  next();
+});
+
 // 3. ATTACH THE ROUTER
 app.use('/api', apiRoutes);
 
@@ -32,10 +47,20 @@ mongoose.connect(process.env.MONGODB_URI)
     console.log(" Azuka Database Connected");
     
     // This line is what stops the "Clean Exit"
-    app.listen(PORT, () => {
-      console.log(` Azuka is ONLINE at http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(` Azuka is ONLINE at http://0.0.0.0:${PORT}`);
     });
   })
   .catch(err => {
     console.error("Connection failed:", err.message);
   });
+
+// Global Error Handler (Catch-all)
+app.use((err, req, res, next) => {
+  console.error("Global Error:", err.stack);
+  res.status(500).json({ 
+    success: false, 
+    message: "Internal Server Error", 
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+  });
+});

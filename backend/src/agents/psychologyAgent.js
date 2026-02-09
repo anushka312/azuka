@@ -43,5 +43,13 @@ export default async function psychologyAgent(userData, logs, tier1Outputs) {
 
     const response = await callGemini(prompt);
     
-    return JSON.parse(response.replace(/```json|```/g, ""));
+    // Robust JSON cleaning
+    let cleanResponse = response.replace(/```json|```/g, "").trim();
+    const jsonStart = cleanResponse.indexOf('{');
+    const jsonEnd = cleanResponse.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+        cleanResponse = cleanResponse.substring(jsonStart, jsonEnd + 1);
+    }
+    
+    return JSON.parse(cleanResponse);
 }

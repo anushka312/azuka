@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Pressable } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withDelay } from 'react-native-reanimated';
 import { toast } from "sonner-native"; 
@@ -7,12 +7,77 @@ import Slider from '@react-native-community/slider';
 import { Brain, Heart, Moon, Activity } from 'lucide-react-native';
 import { GlassCard } from '../../components/GlassCard'; 
 import { lightTheme as theme } from '@/constants/theme';
+import { API_URL } from '@/constants/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 export default function MindsetScreen() {
   const [moodScore, setMoodScore] = useState(70);
   const [energyScore, setEnergyScore] = useState(65);
   const [stressScore, setStressScore] = useState(45);
+  const [sleepHours, setSleepHours] = useState(7.5);
+  const [sleepQuality, setSleepQuality] = useState(80);
+  
+  const [history, setHistory] = useState<any[]>([]);
+  // const [loading, setLoading] = useState(false);
+
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+      fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+      try {
+          const token = await AsyncStorage.getItem('userToken');
+          const headers = {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          };
+          const res = await fetch(`${API_URL}/mindset/history`, { headers });
+          const json = await res.json();
+          if (json.success) {
+              setHistory(json.logs);
+          }
+      } catch (e) {
+          console.error("Mindset history error", e);
+      }
+  };
+
+  const handleSave = async () => {
+      toast.info("Saving check-in...");
+      try {
+          const token = await AsyncStorage.getItem('userToken');
+          const res = await fetch(`${API_URL}/mindset/checkin`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                  mood: moodScore,
+                  energy: energyScore,
+                  stress: stressScore,
+                  sleep_hours: sleepHours,
+                  sleep_quality: sleepQuality
+              })
+          });
+          const json = await res.json();
+          if (json.success) {
+              toast.success("Check-in saved");
+              fetchHistory();
+          }
+      } catch {
+          toast.error("Failed to save");
+      }
+  };
+
+  // Process history for charts
+  const chartData = history.map(log => log.energy || 0).slice(-7); 
+  // Pad with zeros if less than 7
+  while (chartData.length < 7) chartData.push(0);
+
+  const sleepData = history.slice(-3).reverse(); // Last 3 days
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -27,7 +92,7 @@ export default function MindsetScreen() {
           </View>
 
           <GlassCard style={styles.checkInCard}>
-            <Text style={[styles.cardHeading, { color: theme.azuka.forest }]}>Today's Check-in</Text>
+            <Text style={[styles.cardHeading, { color: theme.azuka.forest }]}>Today&apos;s Check-in</Text>
             <View style={styles.sliderContainer}>
               <CheckInSlider 
                 label="Mood" 
@@ -53,19 +118,39 @@ export default function MindsetScreen() {
                 color={theme.azukaExtended.sageLight} 
                 labels={['Calm', 'High']} 
               />
+              <CheckInSlider 
+                label="Sleep Hours" 
+                value={sleepHours} 
+                onValueChange={setSleepHours} 
+                icon={<Moon size={16} color={theme.azuka.teal} />} 
+                color={theme.azuka.teal} 
+                labels={['4h', '12h']} 
+                min={4}
+                max={12}
+                step={0.5}
+                formatValue={(v: number) => `${v}h`}
+              />
+              <CheckInSlider 
+                label="Sleep Quality" 
+                value={sleepQuality} 
+                onValueChange={setSleepQuality} 
+                icon={<Activity size={16} color={theme.azuka.teal} />} 
+                color={theme.azuka.teal} 
+                labels={['Poor', 'Great']} 
+              />
             </View>
             <TouchableOpacity 
               style={[styles.saveButton, { backgroundColor: theme.azukaExtended.tealDark }]} 
-              onPress={() => toast.success("Check-in saved")}
+              onPress={handleSave}
             >
               <Text style={styles.saveButtonText}>Save Check-in</Text>
             </TouchableOpacity>
           </GlassCard>
 
           <GlassCard style={styles.patternCard}>
-            <Text style={[styles.cardHeading, { color: theme.azuka.forest }]}>Weekly Progress</Text>
+            <Text style={[styles.cardHeading, { color: theme.azuka.forest }]}>Weekly Energy</Text>
             <View style={styles.chartRow}>
-              {[65, 70, 68, 72, 70, 75, 70].map((h, i) => (
+              {chartData.map((h, i) => (
                 <PatternBar key={i} height={h} index={i} label={['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]} />
               ))}
             </View>
@@ -75,13 +160,22 @@ export default function MindsetScreen() {
              <View style={styles.sleepHeader}>
                <View style={styles.sleepTitleGroup}>
                  <Moon size={20} color={theme.azuka.teal} />
-                 <Text style={[styles.cardHeading, { color: theme.azuka.sage }]}>Sleep Quality</Text>
+                 <Text style={[styles.cardHeading, { color: theme.azuka.sage }]}>Sleep History</Text>
                </View>
-               <Text style={[styles.sleepPrimary, { color: theme.azuka.forest }]}>7.5h</Text>
+               <Text style={[styles.sleepPrimary, { color: theme.azuka.forest }]}>
+                 {sleepData[0]?.sleep_hours || '-'}h
+               </Text>
              </View>
              <View style={styles.sleepList}>
-                <SleepRow day="Mon" hours={7.2} quality={75} />
-                <SleepRow day="Tue" hours={8.0} quality={85} />
+                {sleepData.map((log: any, i: number) => (
+                    <SleepRow 
+                        key={i}
+                        day={new Date(log.date).toLocaleDateString('en-US', { weekday: 'short' })} 
+                        hours={log.sleep_hours || 0} 
+                        quality={log.sleep_quality || 0} 
+                    />
+                ))}
+                {sleepData.length === 0 && <Text style={{color: theme.azuka.sage}}>No sleep data yet.</Text>}
              </View>
           </GlassCard>
         </ScrollView>
@@ -92,7 +186,7 @@ export default function MindsetScreen() {
 
 // --- Internal Helper Components ---
 
-function CheckInSlider({ label, value, onValueChange, icon, color, labels }: any) {
+function CheckInSlider({ label, value, onValueChange, icon, color, labels, min = 0, max = 100, step = 1, formatValue }: any) {
   return (
     <View style={styles.sliderWrapper}>
       <View style={styles.sliderHeader}>
@@ -100,12 +194,15 @@ function CheckInSlider({ label, value, onValueChange, icon, color, labels }: any
           {icon}
           <Text style={[styles.sliderLabelText, { color: theme.azuka.forest }]}>{label}</Text>
         </View>
-        <Text style={[styles.sliderValueText, { color }]}>{Math.round(value)}%</Text>
+        <Text style={[styles.sliderValueText, { color }]}>
+            {formatValue ? formatValue(value) : `${Math.round(value)}%`}
+        </Text>
       </View>
       <Slider
         style={styles.slider}
-        minimumValue={0}
-        maximumValue={100}
+        minimumValue={min}
+        maximumValue={max}
+        step={step}
         value={value}
         onValueChange={onValueChange}
         minimumTrackTintColor={color}
@@ -125,7 +222,7 @@ function PatternBar({ height, index, label }: any) {
 
   useEffect(() => {
     animatedHeight.value = withDelay(index * 50, withTiming(height, { duration: 800 }));
-  }, []);
+  }, [height, index, animatedHeight]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     height: `${animatedHeight.value}%`,

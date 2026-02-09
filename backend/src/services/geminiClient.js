@@ -8,8 +8,8 @@ const ai = new GoogleGenAI({
 });
 
 export async function callGemini(prompt, imageBase64 = null) {
-  // Use 'gemini-3-flash' for the best speed/intelligence ratio in 2026
-  const modelId = "gemini-2.5-flash-lite"; 
+  // Use 'gemini-2.0-flash-lite' for the best speed/intelligence ratio in 2026
+  const modelId = "gemini-2.0-flash"; 
 
   const config = {
     model: modelId,
@@ -26,7 +26,12 @@ export async function callGemini(prompt, imageBase64 = null) {
       }
     ];
   } else {
-    config.contents = prompt;
+    config.contents = [
+        {
+            role: "user",
+            parts: [{ text: prompt }]
+        }
+    ];
   }
 
   try {

@@ -2,7 +2,6 @@ import React from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GlassCard } from '../GlassCard';
-import { Theme } from '@/constants/theme';
 import { User, Settings, Ruler, Weight, Activity, Heart, Clock, Utensils, AlertCircle } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');

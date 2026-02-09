@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
 import { Home, Dumbbell, Utensils, Brain, Plus } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 

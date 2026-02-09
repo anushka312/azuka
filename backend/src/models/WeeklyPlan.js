@@ -17,10 +17,15 @@ const DayPlanSchema = new mongoose.Schema({
 
   workout: {
     title: String,
-    type: String,        // strength, hiit, yoga, walk
+    type: { type: String },        // strength, hiit, yoga, walk
     duration_min: Number,
-    intensity: String
+    intensity: String,
+    muscles: [String],
+    calories_burn_est: Number,
+    volume: String
   },
+
+  analysis: String, // AI Rationale/Insight
 
   calorie_target: {
     min: Number,

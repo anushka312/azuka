@@ -37,6 +37,7 @@ export default async function cycleRecipeAgent(tier1Data, tier2Data) {
       "ingredients": ["string (quantity + item)"],
       "instructions": ["string (step-by-step cooking instructions)"],
       "prep_time_mins": number,
+      "macros": { "calories": number, "protein": number, "carbs": number, "fat": number },
       "power_nutrients": { "nutrient_name": "reason for this phase" },
       "biological_rationale": "Why this meal is perfect for Day ${tier1Data.cycle.day} and their current stress/energy levels."
     }

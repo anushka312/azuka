@@ -36,9 +36,18 @@ export function CrescentIcon({ size = 24, color = "#000" }: IconProps) {
   );
 }
 
+// Aliases for convenience
+export const SparkleIcon = StarIcon;
+export const MoonIcon = CrescentIcon;
+
+export function DropIcon({ size = 24, color = "#000" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 2L12.5 2.5C14.5 4.5 18 9 18 14C18 17.3137 15.3137 20 12 20C8.68629 20 6 17.3137 6 14C6 9 9.5 4.5 11.5 2.5L12 2Z" fill={color} />
+    </Svg>
+  );
+}
+
 export const MiniStarIcon = (props: IconProps) => <StarIcon size={14} {...props} />;
 export const MiniPetalIcon = (props: IconProps) => <PetalIcon size={14} {...props} />;
 export const MiniCrescentIcon = (props: IconProps) => <CrescentIcon size={14} {...props} />;
-//MiniStarIcon
-//MiniPetalIcon
-//MiniCrescentIcon

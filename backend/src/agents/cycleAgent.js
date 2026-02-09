@@ -44,8 +44,16 @@ RETURN ONLY JSON:
 
   try {
     const response = await callGemini(prompt);
-    const cleanJson = response.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleanJson);
+    
+    // Robust JSON cleaning
+    let cleanResponse = response.replace(/```json|```/g, "").trim();
+    const jsonStart = cleanResponse.indexOf('{');
+    const jsonEnd = cleanResponse.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+        cleanResponse = cleanResponse.substring(jsonStart, jsonEnd + 1);
+    }
+    
+    const parsed = JSON.parse(cleanResponse);
 
     // UNWRITTEN LOGIC: Manual Validation
     // If the AI gives a weird day/phase combo, we fix it here.
@@ -58,4 +66,50 @@ RETURN ONLY JSON:
     console.error("CycleAgent failure:", error);
     return null; 
   }
+}
+
+export async function generateCycleForecast(user, startDate) {
+    const prompt = `
+    ROLE: Azuka Cycle Strategist.
+    
+    # MISSION: Predict 7-Day Cycle & Energy Forecast starting from ${startDate}.
+    
+    # USER PROFILE:
+    - Cycle Day: ${user.cycleDay}
+    - Cycle Length: ${user.cycleLength}
+    
+    # LOGIC:
+    1. Project the cycle phase for the next 7 days.
+    2. Estimate Energy Levels (0-100) based on phase.
+       - Follicular/Ovulatory: High Energy.
+       - Luteal/Menstrual: Lower Energy.
+    3. Identify Risks (e.g., "Bloating", "Fatigue", "ACL Risk").
+    
+    # TASK:
+    Generate a 7-day forecast.
+    
+    IMPORTANT: RETURN ONLY VALID JSON.
+    [
+      {
+        "day_offset": 0,
+        "phase": "string",
+        "energy": number,
+        "symptom_risk": ["string"],
+        "workout_focus": "string"
+      },
+      ...
+    ]
+    `;
+
+    const response = await callGemini(prompt);
+    
+    // Robust JSON cleaning
+    let cleanResponse = response.replace(/```json|```/g, "").trim();
+    const jsonStart = cleanResponse.indexOf('[');
+    const jsonEnd = cleanResponse.lastIndexOf(']');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+        cleanResponse = cleanResponse.substring(jsonStart, jsonEnd + 1);
+    }
+    
+    return JSON.parse(cleanResponse);
 }

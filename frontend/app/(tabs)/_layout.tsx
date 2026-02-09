@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { BottomNav } from '../../components/BottomNav';
 import { QuickLogModal } from '../../components/QuickLogModal';
 import { toast } from 'sonner-native';
